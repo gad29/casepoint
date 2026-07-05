@@ -44,7 +44,7 @@ cd ~/htdocs/casepoint.ghsystems.work
 
 # הסר קבצי ברירת מחדל אם קיימים, ואז שכפל את הריפו לתוך התיקייה
 rm -rf * .[!.]* 2>/dev/null || true
-git clone https://github.com/GRHSystems/casepoint.git .
+git clone https://github.com/gad29/casepoint.git .
 ```
 
 ## שלב 4 — קובץ סביבה לפרודקשן
