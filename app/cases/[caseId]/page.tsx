@@ -1,0 +1,416 @@
+'use client';
+
+import Link from 'next/link';
+import { use, useCallback, useEffect, useState } from 'react';
+import { DocumentsPanel, type DocumentItem } from '@/components/documents-panel';
+import {
+  CASE_STAGES,
+  CHECKLIST_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
+  STAGE_LABELS,
+  documentTemplates,
+  type CaseStage,
+  type ChecklistStatus,
+  type PaymentMethod,
+} from '@/data/domain';
+
+type CaseDetail = {
+  case: {
+    id: string;
+    clientId: string;
+    title: string;
+    officeName: string;
+    stage: CaseStage;
+    checklist: Array<{ code: string; label: string; status: ChecklistStatus; note?: string; documentIds: string[] }>;
+    fee: number;
+    referenceNumber?: string;
+    nextAction?: string;
+    notes?: string;
+    description?: string;
+    decision?: string;
+    openedAt: string;
+    submittedAt?: string;
+    closedAt?: string;
+    missingItems: number;
+    finance: { fee: number; paid: number; balance: number; status: 'paid' | 'partial' | 'unpaid' };
+  };
+  client: { id: string; fullName: string; phone: string; email?: string } | null;
+  documents: DocumentItem[];
+  payments: Array<{ id: string; amount: number; method: PaymentMethod; paidAt: string; note?: string }>;
+  activity: Array<{ id: string; summary: string; at: string }>;
+};
+
+function shekel(amount: number) {
+  return `₪${amount.toLocaleString('he-IL')}`;
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+const CHECKLIST_ACTIONS: Array<{ status: ChecklistStatus; label: string; className?: string }> = [
+  { status: 'received', label: '✓ התקבל', className: 'approve' },
+  { status: 'approved', label: '✓✓ אושר', className: 'approve' },
+  { status: 'resubmit-needed', label: '↩ נדרש מחדש', className: 'resubmit' },
+  { status: 'not-applicable', label: '— לא רלוונטי' },
+  { status: 'missing', label: 'סמן כחסר' },
+];
+
+export default function CaseDetailPage({ params }: { params: Promise<{ caseId: string }> }) {
+  const { caseId } = use(params);
+  const [data, setData] = useState<CaseDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingStage, setSavingStage] = useState(false);
+  const [newItemLabel, setNewItemLabel] = useState('');
+  const [newItemCode, setNewItemCode] = useState('');
+  const [detailsForm, setDetailsForm] = useState<Record<string, string>>({});
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [payForm, setPayForm] = useState({ amount: '', method: 'bank-transfer', note: '' });
+  const [payError, setPayError] = useState('');
+
+  const reload = useCallback(() => {
+    fetch(`/api/cases/${caseId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) setData(d.data);
+      })
+      .catch(() => null)
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  if (loading) return <div className="card muted" style={{ padding: 24 }}>טוען תיק…</div>;
+  if (!data) return <div className="card muted" style={{ padding: 24 }}>התיק לא נמצא.</div>;
+
+  const caseRecord = data.case;
+  const stageIndex = CASE_STAGES.indexOf(caseRecord.stage);
+
+  async function setStage(stage: CaseStage) {
+    if (stage === caseRecord.stage) return;
+    if (!window.confirm(`לעדכן את שלב התיק ל"${STAGE_LABELS[stage]}"?`)) return;
+    setSavingStage(true);
+    try {
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage }),
+      });
+      reload();
+    } finally {
+      setSavingStage(false);
+    }
+  }
+
+  async function updateChecklistStatus(code: string, status: ChecklistStatus) {
+    await fetch(`/api/cases/${caseId}/checklist`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, status }),
+    });
+    reload();
+  }
+
+  async function removeChecklistItem(code: string, label: string) {
+    if (!window.confirm(`להסיר את "${label}" מרשימת המסמכים הנדרשים?`)) return;
+    await fetch(`/api/cases/${caseId}/checklist?code=${encodeURIComponent(code)}`, { method: 'DELETE' });
+    reload();
+  }
+
+  async function addChecklistItem(event: React.FormEvent) {
+    event.preventDefault();
+    if (!newItemLabel.trim() && !newItemCode) return;
+    await fetch(`/api/cases/${caseId}/checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItemCode ? { code: newItemCode } : { label: newItemLabel }),
+    });
+    setNewItemLabel('');
+    setNewItemCode('');
+    reload();
+  }
+
+  function startEditDetails() {
+    setDetailsForm({
+      title: caseRecord.title,
+      fee: String(caseRecord.fee ?? 0),
+      referenceNumber: caseRecord.referenceNumber || '',
+      nextAction: caseRecord.nextAction || '',
+      description: caseRecord.description || '',
+      notes: caseRecord.notes || '',
+      decision: caseRecord.decision || '',
+    });
+    setEditingDetails(true);
+  }
+
+  async function saveDetails(event: React.FormEvent) {
+    event.preventDefault();
+    await fetch(`/api/cases/${caseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...detailsForm, fee: Number(detailsForm.fee) || 0 }),
+    });
+    setEditingDetails(false);
+    reload();
+  }
+
+  async function addPayment(event: React.FormEvent) {
+    event.preventDefault();
+    setPayError('');
+    const amount = Number(payForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPayError('נא להזין סכום חיובי');
+      return;
+    }
+    const res = await fetch('/api/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: caseRecord.clientId, caseId, amount, method: payForm.method, note: payForm.note || undefined }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.ok) {
+      setPayError(result.error || 'רישום התשלום נכשל');
+      return;
+    }
+    setPayForm({ amount: '', method: 'bank-transfer', note: '' });
+    reload();
+  }
+
+  const availableTemplates = documentTemplates.filter(
+    (t) => !caseRecord.checklist.some((item) => item.code === t.code),
+  );
+  const checklistOptions = caseRecord.checklist
+    .filter((item) => item.status === 'missing' || item.status === 'resubmit-needed' || item.status === 'received')
+    .map((item) => ({ code: item.code, label: item.label }));
+
+  return (
+    <div>
+      <Link className="case-back-link" href="/cases">← כל התיקים</Link>
+      <div className="hero">
+        <div>
+          <span className="case-id-badge">{caseRecord.id}</span>
+          <h1 style={{ margin: '6px 0 4px' }}>{caseRecord.title}</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            {data.client && (
+              <>
+                <Link className="text-link" href={`/clients/${caseRecord.clientId}` as never}>{data.client.fullName}</Link>
+                {' · '}
+              </>
+            )}
+            {caseRecord.officeName}
+            {caseRecord.referenceNumber && <> · מס׳ תיק במשרד: <span dir="ltr">{caseRecord.referenceNumber}</span></>}
+          </p>
+        </div>
+        <div className="hero-actions">
+          {caseRecord.missingItems > 0 && <span className="badge danger">{caseRecord.missingItems} מסמכים חסרים</span>}
+          <span className={`badge ${caseRecord.finance.status === 'paid' ? 'good' : caseRecord.finance.status === 'partial' ? 'warn' : 'danger'}`}>
+            {PAYMENT_STATUS_LABELS[caseRecord.finance.status]}
+            {caseRecord.finance.balance > 0 && ` · יתרה ${shekel(caseRecord.finance.balance)}`}
+          </span>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="stage-bar-wrap">
+          <div className="stage-bar">
+            {CASE_STAGES.map((stage, index) => (
+              <button
+                key={stage}
+                type="button"
+                className={`stage-step ${index < stageIndex ? 'done' : ''} ${stage === caseRecord.stage ? 'current' : ''}`}
+                onClick={() => setStage(stage)}
+                disabled={savingStage}
+                style={{ background: 'none', border: 'none', padding: 0 }}
+                title={`עבור לשלב: ${STAGE_LABELS[stage]}`}
+              >
+                <span className="stage-dot" />
+                <span className="stage-label">{STAGE_LABELS[stage]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+          לחיצה על שלב מעדכנת את מצב התיק. נפתח {formatDate(caseRecord.openedAt)}
+          {caseRecord.submittedAt && ` · הוגש ${formatDate(caseRecord.submittedAt)}`}
+          {caseRecord.closedAt && ` · נסגר ${formatDate(caseRecord.closedAt)}`}
+        </p>
+      </div>
+
+      <div className="grid cols-2" style={{ alignItems: 'start' }}>
+        <div className="grid" style={{ alignContent: 'start' }}>
+          <div className="card">
+            <div className="section-heading">
+              <h3 style={{ margin: 0 }}>מסמכים נדרשים</h3>
+              <span className="muted" style={{ fontSize: 12 }}>
+                {caseRecord.checklist.filter((i) => i.status === 'approved' || i.status === 'received').length}/
+                {caseRecord.checklist.filter((i) => i.status !== 'not-applicable').length} התקבלו
+              </span>
+            </div>
+            {caseRecord.checklist.length === 0 && <p className="muted">אין פריטים ברשימה. הוסף מסמכים נדרשים למטה.</p>}
+            {caseRecord.checklist.map((item) => (
+              <div key={item.code} className="doc-row">
+                <div className="doc-name">
+                  {item.label}
+                  {item.note && <span className="muted" style={{ display: 'block', fontSize: 11 }}>{item.note}</span>}
+                </div>
+                <span className={`doc-status-badge ${item.status === 'missing' ? 'not-uploaded' : item.status === 'received' ? 'uploaded' : item.status === 'in-review' ? 'under-review' : item.status}`}>
+                  {CHECKLIST_STATUS_LABELS[item.status]}
+                </span>
+                <div className="doc-actions">
+                  {CHECKLIST_ACTIONS.filter((action) => action.status !== item.status)
+                    .slice(0, 3)
+                    .map((action) => (
+                      <button
+                        key={action.status}
+                        type="button"
+                        className={`doc-action-btn ${action.className || ''}`}
+                        onClick={() => updateChecklistStatus(item.code, action.status)}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  <button type="button" className="doc-action-btn reject" onClick={() => removeChecklistItem(item.code, item.label)}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <form onSubmit={addChecklistItem} style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+              <select
+                value={newItemCode}
+                onChange={(e) => setNewItemCode(e.target.value)}
+                style={{ flex: 1, minWidth: 180, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--line)' }}
+              >
+                <option value="">בחר מהרשימה…</option>
+                {availableTemplates.map((t) => (
+                  <option key={t.code} value={t.code}>{t.label}</option>
+                ))}
+              </select>
+              <input
+                placeholder="או מסמך מותאם אישית…"
+                value={newItemLabel}
+                onChange={(e) => setNewItemLabel(e.target.value)}
+                disabled={Boolean(newItemCode)}
+                style={{ flex: 1, minWidth: 180, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--line)' }}
+              />
+              <button className="button button-compact" type="submit">+ הוסף</button>
+            </form>
+          </div>
+
+          <div className="card">
+            <div className="section-heading">
+              <h3 style={{ margin: 0 }}>מסמכי התיק</h3>
+              <Link className="mini-link" href={`/clients/${caseRecord.clientId}` as never}>לתיקיית הלקוח המלאה ←</Link>
+            </div>
+            <DocumentsPanel
+              clientId={caseRecord.clientId}
+              caseId={caseId}
+              documents={data.documents}
+              checklistOptions={checklistOptions}
+              onChanged={reload}
+            />
+          </div>
+        </div>
+
+        <div className="grid" style={{ alignContent: 'start' }}>
+          <div className="card">
+            <div className="section-heading">
+              <h3 style={{ margin: 0 }}>פרטי התיק</h3>
+              {!editingDetails && (
+                <button type="button" className="button button-secondary button-compact" onClick={startEditDetails}>עריכה</button>
+              )}
+            </div>
+            {!editingDetails ? (
+              <div className="review-grid">
+                <div className="review-row"><span className="muted">שכר טרחה</span><strong>{shekel(caseRecord.fee)}</strong></div>
+                <div className="review-row"><span className="muted">שולם</span><strong>{shekel(caseRecord.finance.paid)}</strong></div>
+                <div className="review-row"><span className="muted">פעולה הבאה</span><span>{caseRecord.nextAction || '—'}</span></div>
+                <div className="review-row"><span className="muted">מס׳ תיק במשרד</span><span dir="ltr">{caseRecord.referenceNumber || '—'}</span></div>
+                {caseRecord.description && <div className="review-row"><span className="muted">תיאור</span><span>{caseRecord.description}</span></div>}
+                {caseRecord.decision && <div className="review-row"><span className="muted">החלטה</span><span>{caseRecord.decision}</span></div>}
+                {caseRecord.notes && <div className="review-row"><span className="muted">הערות</span><span style={{ whiteSpace: 'pre-wrap' }}>{caseRecord.notes}</span></div>}
+              </div>
+            ) : (
+              <form onSubmit={saveDetails}>
+                <div className="form-grid cols-2">
+                  <div className="field"><label>נושא התיק</label><input value={detailsForm.title} onChange={(e) => setDetailsForm({ ...detailsForm, title: e.target.value })} /></div>
+                  <div className="field"><label>שכר טרחה (₪)</label><input type="number" min="0" value={detailsForm.fee} onChange={(e) => setDetailsForm({ ...detailsForm, fee: e.target.value })} /></div>
+                  <div className="field"><label>מס׳ תיק במשרד</label><input value={detailsForm.referenceNumber} onChange={(e) => setDetailsForm({ ...detailsForm, referenceNumber: e.target.value })} /></div>
+                  <div className="field"><label>פעולה הבאה</label><input value={detailsForm.nextAction} onChange={(e) => setDetailsForm({ ...detailsForm, nextAction: e.target.value })} /></div>
+                </div>
+                <div className="field"><label>תיאור</label><textarea rows={2} value={detailsForm.description} onChange={(e) => setDetailsForm({ ...detailsForm, description: e.target.value })} /></div>
+                <div className="field"><label>החלטת המשרד</label><textarea rows={2} value={detailsForm.decision} onChange={(e) => setDetailsForm({ ...detailsForm, decision: e.target.value })} /></div>
+                <div className="field"><label>הערות</label><textarea rows={3} value={detailsForm.notes} onChange={(e) => setDetailsForm({ ...detailsForm, notes: e.target.value })} /></div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="button" type="submit">שמור</button>
+                  <button className="button button-secondary" type="button" onClick={() => setEditingDetails(false)}>ביטול</button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>תשלומים לתיק</h3>
+            <div className="receipt-calc" style={{ marginTop: 0, marginBottom: 14 }}>
+              <div className="receipt-calc-row"><span>שכר טרחה</span><span>{shekel(caseRecord.finance.fee)}</span></div>
+              <div className="receipt-calc-row"><span>שולם</span><span>{shekel(caseRecord.finance.paid)}</span></div>
+              <div className="receipt-calc-row total"><span>יתרה</span><span>{shekel(caseRecord.finance.balance)}</span></div>
+            </div>
+            {data.payments.length > 0 && (
+              <ul className="list" style={{ marginBottom: 14 }}>
+                {data.payments.map((p) => (
+                  <li key={p.id} className="split" style={{ fontSize: 13 }}>
+                    <span>{formatDate(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method]}{p.note ? ` · ${p.note}` : ''}</span>
+                    <strong>{shekel(p.amount)}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form onSubmit={addPayment} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="סכום ₪"
+                value={payForm.amount}
+                onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
+                style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--line)' }}
+              />
+              <select
+                value={payForm.method}
+                onChange={(e) => setPayForm({ ...payForm, method: e.target.value })}
+                style={{ flex: 1, minWidth: 130, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--line)' }}
+              >
+                {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <button className="button button-compact" type="submit">רשום תשלום</button>
+              {payError && <p className="form-error" style={{ width: '100%' }}>{payError}</p>}
+            </form>
+          </div>
+
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>פעילות בתיק</h3>
+            {data.activity.length === 0 ? (
+              <p className="muted">אין פעילות.</p>
+            ) : (
+              <div className="timeline">
+                {data.activity.map((entry) => (
+                  <div key={entry.id} className="step">
+                    <div className="muted" style={{ fontSize: 11 }}>{formatDate(entry.at)}</div>
+                    <div style={{ fontSize: 13 }}>{entry.summary}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
