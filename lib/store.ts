@@ -8,6 +8,7 @@ import {
   OPEN_STAGES,
   STAGE_LABELS,
   type ActivityRecord,
+  type CaseKind,
   type CaseRecord,
   type CaseStage,
   type ChecklistItem,
@@ -15,9 +16,11 @@ import {
   type ClientRecord,
   type DocumentRecord,
   type GovernmentOffice,
+  type OperatingCompany,
   type PaymentMethod,
   type PaymentRecord,
   type PaymentStatus,
+  type WorkerRecord,
 } from '@/data/domain';
 import { env } from '@/lib/env';
 import { triggerN8n } from '@/lib/n8n';
@@ -142,6 +145,8 @@ export interface CreateClientInput {
   address?: string;
   city?: string;
   notes?: string;
+  /** Worker id who created the client ('admin' for the admin). */
+  createdBy?: string;
 }
 
 export function createClient(input: CreateClientInput): ClientRecord {
@@ -155,6 +160,7 @@ export function createClient(input: CreateClientInput): ClientRecord {
     address: input.address?.trim() || undefined,
     city: input.city?.trim() || undefined,
     notes: input.notes?.trim() || undefined,
+    createdBy: input.createdBy || 'admin',
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
@@ -204,6 +210,10 @@ export interface CreateCaseInput {
   description?: string;
   fee?: number;
   nextAction?: string;
+  company?: OperatingCompany;
+  caseKind?: CaseKind;
+  /** Worker id who opened the case ('admin' for the admin). */
+  openedBy?: string;
   /** Template codes to seed the checklist with. */
   checklistCodes?: string[];
   /** Free-text custom checklist items. */
@@ -242,6 +252,10 @@ export function createCase(input: CreateCaseInput): CaseRecord | undefined {
     description: input.description?.trim() || undefined,
     stage: checklist.length ? 'collecting-documents' : 'new-client',
     checklist,
+    company: input.company,
+    caseKind: input.caseKind || 'new',
+    troubleFlag: false,
+    openedBy: input.openedBy || 'admin',
     fee: Number.isFinite(input.fee) && (input.fee as number) >= 0 ? Number(input.fee) : 0,
     nextAction: input.nextAction?.trim() || undefined,
     openedAt: nowIso(),
@@ -279,6 +293,12 @@ export interface UpdateCaseInput {
   nextAction?: string;
   notes?: string;
   decision?: string;
+  company?: OperatingCompany;
+  caseKind?: CaseKind;
+  troubleFlag?: boolean;
+  troubleNote?: string;
+  /** Worker id to assign the case to; empty string clears the assignment. */
+  assignedTo?: string;
 }
 
 export function updateCase(caseId: string, input: UpdateCaseInput) {
@@ -293,6 +313,9 @@ export function updateCase(caseId: string, input: UpdateCaseInput) {
     ...Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)),
     updatedAt: nowIso(),
   };
+  if (input.assignedTo !== undefined) {
+    updated.assignedTo = input.assignedTo.trim() || undefined;
+  }
 
   if (input.stage && input.stage !== previousStage) {
     if (input.stage === 'submitted' && !updated.submittedAt) updated.submittedAt = nowIso();
@@ -326,6 +349,34 @@ export function updateCase(caseId: string, input: UpdateCaseInput) {
     });
   } else {
     logActivity({ type: 'case-updated', clientId: updated.clientId, caseId, summary: `עודכן תיק "${updated.title}"` });
+  }
+
+  if (input.assignedTo !== undefined && (current.assignedTo || undefined) !== updated.assignedTo) {
+    const worker = updated.assignedTo ? getWorker(updated.assignedTo) : undefined;
+    logActivity({
+      type: 'case-assigned',
+      clientId: updated.clientId,
+      caseId,
+      summary: worker ? `התיק "${updated.title}" שויך לעובד ${worker.name}` : `בוטל שיוך העובד מהתיק "${updated.title}"`,
+    });
+  }
+
+  if (input.troubleFlag !== undefined && Boolean(current.troubleFlag) !== Boolean(input.troubleFlag)) {
+    logActivity({
+      type: 'case-trouble-flag',
+      clientId: updated.clientId,
+      caseId,
+      summary: input.troubleFlag
+        ? `🚩 התיק "${updated.title}" סומן כתקוע / נדרשת השלמה${input.troubleNote ? `: ${input.troubleNote}` : ''}`
+        : `הוסרה התראת הבעיה מהתיק "${updated.title}"`,
+    });
+    void fireEvent('case-trouble-flag', {
+      caseId,
+      clientId: updated.clientId,
+      title: updated.title,
+      troubleFlag: Boolean(input.troubleFlag),
+      troubleNote: updated.troubleNote || '',
+    });
   }
 
   return updated;
@@ -654,9 +705,13 @@ export function getCaseFinance(caseRecord: Pick<CaseRecord, 'id' | 'fee'>, payme
   return { caseId: caseRecord.id, fee: caseRecord.fee, paid, balance, status };
 }
 
-export function getDashboardSummary() {
-  const cases = listCases();
-  const clients = listClients();
+export function getDashboardSummary(caseFilter?: (caseRecord: CaseRecord) => boolean) {
+  const allCases = listCases();
+  const cases = caseFilter ? allCases.filter(caseFilter) : allCases;
+  const allClients = listClients();
+  const clients = caseFilter
+    ? allClients.filter((client) => cases.some((c) => c.clientId === client.id))
+    : allClients;
   const payments = listPayments();
 
   const byStage: Record<string, number> = {};
@@ -675,6 +730,8 @@ export function getDashboardSummary() {
   const totalPaid = finance.reduce((sum, f) => sum + f.paid, 0);
   const totalOutstanding = finance.reduce((sum, f) => sum + f.balance, 0);
 
+  const troubleCases = cases.filter((c) => c.troubleFlag && c.stage !== 'closed').length;
+
   return {
     clients: clients.length,
     cases: cases.length,
@@ -682,9 +739,160 @@ export function getDashboardSummary() {
     closedCases: cases.length - openCases.length,
     missingDocsCases,
     actionRequired,
+    troubleCases,
     byStage,
     totalFees,
     totalPaid,
     totalOutstanding,
   };
+}
+
+// ── Workers ──────────────────────────────────────────────────────────────────
+
+export function listWorkers(): WorkerRecord[] {
+  return readJson<WorkerRecord[]>(dbFile('workers'), []);
+}
+
+export function getWorker(workerId: string) {
+  return listWorkers().find((w) => w.id === workerId);
+}
+
+export function getWorkerByEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  return listWorkers().find((w) => w.email.toLowerCase() === normalized);
+}
+
+export function createWorker(input: { name: string; email: string; passwordHash: string }): WorkerRecord | undefined {
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  if (!name || !email || !input.passwordHash) return undefined;
+  if (getWorkerByEmail(email)) return undefined;
+
+  const record: WorkerRecord = {
+    id: nextId('WRK', 'worker', 100),
+    name,
+    email,
+    passwordHash: input.passwordHash,
+    active: true,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  const workers = listWorkers();
+  workers.unshift(record);
+  writeJson(dbFile('workers'), workers);
+  logActivity({ type: 'worker-created', summary: `נוסף עובד חדש: ${name} (${email})` });
+  return record;
+}
+
+export function updateWorker(workerId: string, input: { name?: string; active?: boolean; passwordHash?: string }) {
+  const workers = listWorkers();
+  const index = workers.findIndex((w) => w.id === workerId);
+  if (index === -1) return undefined;
+  const record = workers[index];
+  if (input.name?.trim()) record.name = input.name.trim();
+  if (input.active !== undefined) record.active = input.active;
+  if (input.passwordHash) record.passwordHash = input.passwordHash;
+  record.updatedAt = nowIso();
+  workers[index] = record;
+  writeJson(dbFile('workers'), workers);
+  if (input.active !== undefined) {
+    logActivity({ type: 'worker-updated', summary: `עובד ${record.name} ${input.active ? 'הופעל' : 'הושבת'}` });
+  }
+  return record;
+}
+
+// ── Session-based visibility ─────────────────────────────────────────────────
+
+export type Viewer = { role: 'admin' } | { role: 'worker'; workerId: string };
+
+export function caseVisibleTo(caseRecord: Pick<CaseRecord, 'openedBy' | 'assignedTo'>, viewer: Viewer) {
+  if (viewer.role === 'admin') return true;
+  return caseRecord.openedBy === viewer.workerId || caseRecord.assignedTo === viewer.workerId;
+}
+
+export function listVisibleCases(viewer: Viewer) {
+  const cases = listCases();
+  if (viewer.role === 'admin') return cases;
+  return cases.filter((c) => caseVisibleTo(c, viewer));
+}
+
+export function clientVisibleTo(client: Pick<ClientRecord, 'id' | 'createdBy'>, viewer: Viewer) {
+  if (viewer.role === 'admin') return true;
+  if (client.createdBy === viewer.workerId) return true;
+  return listCases().some((c) => c.clientId === client.id && caseVisibleTo(c, viewer));
+}
+
+export function listVisibleClients(viewer: Viewer) {
+  const clients = listClients();
+  if (viewer.role === 'admin') return clients;
+  const visibleClientIds = new Set(listVisibleCases(viewer).map((c) => c.clientId));
+  return clients.filter((c) => c.createdBy === viewer.workerId || visibleClientIds.has(c.id));
+}
+
+export function documentVisibleTo(doc: Pick<DocumentRecord, 'clientId'>, viewer: Viewer) {
+  if (viewer.role === 'admin') return true;
+  const client = getClient(doc.clientId);
+  return Boolean(client && clientVisibleTo(client, viewer));
+}
+
+// ── Settings (blank rent-contract template, etc.) ────────────────────────────
+
+export interface AppSettings {
+  blankContract?: {
+    fileName: string;
+    originalName: string;
+    mimeType: string;
+    uploadedAt: string;
+  };
+}
+
+function templatesFolder() {
+  return path.join(dataRoot(), 'templates');
+}
+
+export function getSettings(): AppSettings {
+  return readJson<AppSettings>(dbFile('settings'), {});
+}
+
+function saveSettings(settings: AppSettings) {
+  writeJson(dbFile('settings'), settings);
+}
+
+export function saveBlankContract(input: { originalName: string; mimeType: string; buffer: Buffer }) {
+  const settings = getSettings();
+  // Remove the previous template file, if any.
+  if (settings.blankContract) {
+    const oldPath = path.join(templatesFolder(), settings.blankContract.fileName);
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  }
+  const safeName = `blank-contract-${Date.now()}${path.extname(input.originalName) || ''}`;
+  fs.mkdirSync(templatesFolder(), { recursive: true });
+  fs.writeFileSync(path.join(templatesFolder(), safeName), input.buffer);
+  settings.blankContract = {
+    fileName: safeName,
+    originalName: path.basename(input.originalName),
+    mimeType: input.mimeType || 'application/octet-stream',
+    uploadedAt: nowIso(),
+  };
+  saveSettings(settings);
+  logActivity({ type: 'settings-updated', summary: 'הועלה טופס חוזה שכירות ריק חדש' });
+  return settings.blankContract;
+}
+
+export function readBlankContract() {
+  const settings = getSettings();
+  if (!settings.blankContract) return undefined;
+  const filePath = path.join(templatesFolder(), settings.blankContract.fileName);
+  if (!fs.existsSync(filePath)) return undefined;
+  return { meta: settings.blankContract, buffer: fs.readFileSync(filePath) };
+}
+
+export function deleteBlankContract() {
+  const settings = getSettings();
+  if (!settings.blankContract) return false;
+  const filePath = path.join(templatesFolder(), settings.blankContract.fileName);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  delete settings.blankContract;
+  saveSettings(settings);
+  return true;
 }

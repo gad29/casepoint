@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { CASE_KIND_LABELS, COMPANY_LABELS, type CaseKind, type OperatingCompany } from '@/data/domain';
 
 type ClientRow = {
   id: string;
@@ -14,6 +15,7 @@ type ClientRow = {
   caseCount: number;
   openCaseCount: number;
   missingItems: number;
+  hasTrouble?: boolean;
   outstandingBalance: number;
   createdAt: string;
 };
@@ -22,8 +24,9 @@ function shekel(amount: number) {
   return `₪${amount.toLocaleString('he-IL')}`;
 }
 
-function NewClientForm({ onCreated, onClose }: { onCreated: (id: string) => void; onClose: () => void }) {
+function NewClientForm({ onCreated, onClose }: { onCreated: (caseId: string | null, clientId: string) => void; onClose: () => void }) {
   const [form, setForm] = useState({ fullName: '', phone: '', idNumber: '', email: '', city: '', address: '', notes: '' });
+  const [caseForm, setCaseForm] = useState({ title: 'סיוע בשכר דירה', company: 'milgam' as OperatingCompany, caseKind: 'new' as CaseKind, fee: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -39,14 +42,22 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (id: string) => void
       const res = await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          case: {
+            title: caseForm.title,
+            company: caseForm.company,
+            caseKind: caseForm.caseKind,
+            fee: caseForm.fee ? Number(caseForm.fee) : 0,
+          },
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         setError(data.error || 'שמירת הלקוח נכשלה');
         return;
       }
-      onCreated(data.data.id);
+      onCreated(data.data.case?.id ?? null, data.data.client.id);
     } catch {
       setError('שגיאת תקשורת');
     } finally {
@@ -57,7 +68,7 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (id: string) => void
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="section-heading">
-        <h3 style={{ margin: 0 }}>לקוח חדש</h3>
+        <h3 style={{ margin: 0 }}>לקוח חדש (נפתח אוטומטית תיק עם רשימת המסמכים המלאה)</h3>
         <button type="button" className="doc-action-btn" onClick={onClose}>✕ סגור</button>
       </div>
       <form onSubmit={submit}>
@@ -91,9 +102,45 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (id: string) => void
           <label>הערות</label>
           <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} />
         </div>
+
+        <div className="doc-group-title">פרטי התיק שייפתח</div>
+        <div className="form-grid cols-2">
+          <div className="field">
+            <label>נושא התיק</label>
+            <input value={caseForm.title} onChange={(e) => setCaseForm({ ...caseForm, title: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>חברה מטפלת</label>
+            <select value={caseForm.company} onChange={(e) => setCaseForm({ ...caseForm, company: e.target.value as OperatingCompany })}>
+              {Object.entries(COMPANY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>סוג התיק</label>
+            <div className="language-switch">
+              {(Object.entries(CASE_KIND_LABELS) as [CaseKind, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`language-option ${caseForm.caseKind === value ? 'active' : ''}`}
+                  onClick={() => setCaseForm({ ...caseForm, caseKind: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <label>שכר טרחה (₪)</label>
+            <input type="number" min="0" value={caseForm.fee} onChange={(e) => setCaseForm({ ...caseForm, fee: e.target.value })} />
+          </div>
+        </div>
+
         {error && <p className="form-error">{error}</p>}
         <button className="button" type="submit" disabled={saving}>
-          {saving ? 'שומר…' : 'שמור לקוח'}
+          {saving ? 'שומר…' : 'שמור לקוח ופתח תיק'}
         </button>
       </form>
     </div>
@@ -146,7 +193,7 @@ function ClientsPageInner() {
       {showNew && (
         <NewClientForm
           onClose={() => setShowNew(false)}
-          onCreated={(id) => router.push(`/clients/${id}` as never)}
+          onCreated={(caseId, clientId) => router.push((caseId ? `/cases/${caseId}` : `/clients/${clientId}`) as never)}
         />
       )}
 
@@ -163,8 +210,11 @@ function ClientsPageInner() {
       ) : (
         <div className="office-case-list">
           {filtered.map((client) => (
-            <Link key={client.id} className="case-list-item" href={`/clients/${client.id}` as never}>
-              <span className="cli-name">{client.fullName}</span>
+            <Link key={client.id} className={`case-list-item ${client.hasTrouble ? 'case-trouble' : ''}`} href={`/clients/${client.id}` as never}>
+              <span className="cli-name">
+                {client.hasTrouble && <span title="יש תיק שדורש טיפול">🚩 </span>}
+                {client.fullName}
+              </span>
               <span className="cli-meta">
                 <span dir="ltr">{client.phone}</span>
                 {client.city && <span>· {client.city}</span>}

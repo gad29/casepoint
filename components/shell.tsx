@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
-type AdminInfo = { email: string; authDisabled: boolean };
+type AdminInfo = { email: string; name: string; role: 'admin' | 'worker'; authDisabled: boolean };
 
 function HomeIcon() {
   return (
@@ -63,15 +63,26 @@ function LogOutIcon() {
   );
 }
 
+function SettingsIcon() {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
 const primaryNav = [
-  { href: '/dashboard', label: 'לוח בקרה', Icon: HomeIcon },
-  { href: '/clients', label: 'לקוחות', Icon: UsersIcon },
-  { href: '/cases', label: 'תיקים', Icon: FolderIcon },
-  { href: '/payments', label: 'תשלומים', Icon: CoinsIcon },
+  { href: '/dashboard', label: 'לוח בקרה', Icon: HomeIcon, adminOnly: false },
+  { href: '/clients', label: 'לקוחות', Icon: UsersIcon, adminOnly: false },
+  { href: '/cases', label: 'תיקים', Icon: FolderIcon, adminOnly: false },
+  { href: '/payments', label: 'תשלומים', Icon: CoinsIcon, adminOnly: true },
+  { href: '/workers', label: 'עובדים', Icon: UsersIcon, adminOnly: true },
 ];
 
 const secondaryNav = [
-  { href: '/connections', label: 'חיבורים ואוטומציה', Icon: LinkIcon },
+  { href: '/settings', label: 'הגדרות וייבוא', Icon: SettingsIcon, adminOnly: true },
+  { href: '/connections', label: 'חיבורים ואוטומציה', Icon: LinkIcon, adminOnly: true },
 ];
 
 export function AdminFrame({ children }: { children: ReactNode }) {
@@ -83,10 +94,14 @@ export function AdminFrame({ children }: { children: ReactNode }) {
     fetch('/api/auth/me')
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok) setAdmin({ email: d.email, authDisabled: Boolean(d.authDisabled) });
+        if (d.ok) setAdmin({ email: d.email, name: d.name || '', role: d.role === 'worker' ? 'worker' : 'admin', authDisabled: Boolean(d.authDisabled) });
       })
       .catch(() => null);
   }, []);
+
+  const isAdmin = !admin || admin.role === 'admin';
+  const visiblePrimary = primaryNav.filter((item) => isAdmin || !item.adminOnly);
+  const visibleSecondary = secondaryNav.filter((item) => isAdmin || !item.adminOnly);
 
   async function signOut() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -111,7 +126,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
 
         <div className="sidebar-scroll">
           <nav className="nav" aria-label="ניווט ראשי">
-            {primaryNav.map(({ href, label, Icon }) => (
+            {visiblePrimary.map(({ href, label, Icon }) => (
               <Link key={href} href={href as never} className={isActive(href) ? 'active' : undefined}>
                 <Icon />
                 <span>{label}</span>
@@ -119,15 +134,19 @@ export function AdminFrame({ children }: { children: ReactNode }) {
             ))}
           </nav>
 
-          <div className="nav-divider" />
-          <nav className="nav">
-            {secondaryNav.map(({ href, label, Icon }) => (
-              <Link key={href} href={href as never} className={isActive(href) ? 'active' : undefined}>
-                <Icon />
-                <span>{label}</span>
-              </Link>
-            ))}
-          </nav>
+          {visibleSecondary.length > 0 && (
+            <>
+              <div className="nav-divider" />
+              <nav className="nav">
+                {visibleSecondary.map(({ href, label, Icon }) => (
+                  <Link key={href} href={href as never} className={isActive(href) ? 'active' : undefined}>
+                    <Icon />
+                    <span>{label}</span>
+                  </Link>
+                ))}
+              </nav>
+            </>
+          )}
 
           {admin?.authDisabled && (
             <p className="muted" style={{ fontSize: 11, lineHeight: 1.5, marginTop: 16, padding: '0 4px' }}>
@@ -138,10 +157,10 @@ export function AdminFrame({ children }: { children: ReactNode }) {
 
         <div className="sidebar-user">
           <div className="sidebar-user-info">
-            <div className="sidebar-avatar">{admin?.email?.[0]?.toUpperCase() ?? 'מ'}</div>
+            <div className="sidebar-avatar">{(admin?.name || admin?.email || 'מ')[0].toUpperCase()}</div>
             <div className="sidebar-user-meta">
-              <div className="sidebar-user-email">{admin?.email ?? 'מנהל'}</div>
-              <div className="sidebar-user-role">מנהל המערכת</div>
+              <div className="sidebar-user-email">{admin?.name || admin?.email || 'מנהל'}</div>
+              <div className="sidebar-user-role">{admin?.role === 'worker' ? 'עובד' : 'מנהל המערכת'}</div>
             </div>
           </div>
           <button type="button" className="sidebar-signout" onClick={signOut}>

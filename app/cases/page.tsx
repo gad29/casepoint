@@ -4,12 +4,17 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  CASE_KIND_LABELS,
+  COMPANY_LABELS,
+  DEFAULT_CHECKLIST_CODES,
   documentTemplates,
   OFFICE_LABELS,
   PAYMENT_STATUS_LABELS,
   STAGE_LABELS,
+  type CaseKind,
   type CaseStage,
   type GovernmentOffice,
+  type OperatingCompany,
 } from '@/data/domain';
 
 type CaseRow = {
@@ -23,6 +28,11 @@ type CaseRow = {
   missingItems: number;
   nextAction?: string;
   openedAt: string;
+  company?: OperatingCompany;
+  caseKind?: CaseKind;
+  troubleFlag?: boolean;
+  openedByName?: string;
+  assignedToName?: string;
   finance: { fee: number; paid: number; balance: number; status: 'paid' | 'partial' | 'unpaid' };
 };
 
@@ -34,6 +44,7 @@ function shekel(amount: number) {
 
 const FILTERS = [
   { id: 'open', label: 'פעילים' },
+  { id: 'trouble', label: '🚩 דורשים טיפול' },
   { id: 'stuck', label: 'חסרים מסמכים' },
   { id: 'waiting', label: 'ממתינים למשרד' },
   { id: 'closed', label: 'סגורים' },
@@ -55,14 +66,16 @@ function NewCaseForm({
 }) {
   const [form, setForm] = useState({
     clientId: initialClientId,
-    title: '',
-    office: 'bituach-leumi' as GovernmentOffice,
+    title: 'סיוע בשכר דירה',
+    office: 'housing-ministry' as GovernmentOffice,
     officeOther: '',
     description: '',
     fee: '',
     nextAction: '',
+    company: 'milgam' as OperatingCompany,
+    caseKind: 'new' as CaseKind,
   });
-  const [checklistCodes, setChecklistCodes] = useState<string[]>([]);
+  const [checklistCodes, setChecklistCodes] = useState<string[]>(DEFAULT_CHECKLIST_CODES);
   const [customItems, setCustomItems] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -71,12 +84,7 @@ function NewCaseForm({
     setChecklistCodes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
   }
 
-  const suggested = useMemo(() => {
-    const forOffice = documentTemplates.filter((t) => t.offices?.includes(form.office));
-    const general = documentTemplates.filter((t) => !t.offices);
-    const rest = documentTemplates.filter((t) => t.offices && !t.offices.includes(form.office));
-    return [...forOffice, ...general, ...rest];
-  }, [form.office]);
+  const suggested = documentTemplates;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -133,7 +141,30 @@ function NewCaseForm({
             />
           </div>
           <div className="field">
-            <label>משרד ממשלתי *</label>
+            <label>חברה מטפלת *</label>
+            <select value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value as OperatingCompany })}>
+              {Object.entries(COMPANY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>סוג התיק</label>
+            <div className="language-switch">
+              {(Object.entries(CASE_KIND_LABELS) as [CaseKind, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`language-option ${form.caseKind === value ? 'active' : ''}`}
+                  onClick={() => setForm({ ...form, caseKind: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <label>משרד ממשלתי</label>
             <select value={form.office} onChange={(e) => setForm({ ...form, office: e.target.value as GovernmentOffice })}>
               {Object.entries(OFFICE_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -169,12 +200,7 @@ function NewCaseForm({
                 checked={checklistCodes.includes(template.code)}
                 onChange={() => toggleCode(template.code)}
               />
-              <span>
-                {template.label}
-                {template.offices?.includes(form.office) && (
-                  <span className="muted" style={{ display: 'block', fontSize: 11 }}>מומלץ למשרד זה</span>
-                )}
-              </span>
+              <span>{template.label}</span>
             </label>
           ))}
         </div>
@@ -223,6 +249,8 @@ function CasesPageInner() {
     switch (filter) {
       case 'open':
         return cases.filter((c) => c.stage !== 'closed');
+      case 'trouble':
+        return cases.filter((c) => c.troubleFlag && c.stage !== 'closed');
       case 'stuck':
         return cases.filter((c) => c.stage !== 'closed' && (c.missingItems > 0 || c.stage === 'action-required'));
       case 'waiting':
@@ -271,14 +299,19 @@ function CasesPageInner() {
       ) : (
         <div className="office-case-list">
           {filtered.map((c) => (
-            <Link key={c.id} className="case-list-item" href={`/cases/${c.id}` as never}>
+            <Link key={c.id} className={`case-list-item ${c.troubleFlag ? 'case-trouble' : ''}`} href={`/cases/${c.id}` as never}>
               <span className="cli-name">
+                {c.troubleFlag && '🚩 '}
                 {c.clientName} · {c.title}
+                {c.caseKind === 'renewal' && <span className="kind-badge">חידוש</span>}
               </span>
               <span className="cli-stage">{STAGE_LABELS[c.stage]}</span>
               <span className="cli-meta">
                 <span className="case-id-badge">{c.id}</span>
-                <span>{c.officeName}</span>
+                {c.company && c.company !== 'none' && <span>{COMPANY_LABELS[c.company]}</span>}
+                {(!c.company || c.company === 'none') && <span>{c.officeName}</span>}
+                {c.assignedToName && <span>· 👤 {c.assignedToName}</span>}
+                {!c.assignedToName && c.openedByName && <span>· 👤 {c.openedByName}</span>}
                 {c.missingItems > 0 && <span className="cli-missing">· {c.missingItems} מסמכים חסרים</span>}
                 <span>
                   · {PAYMENT_STATUS_LABELS[c.finance.status]}

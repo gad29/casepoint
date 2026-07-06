@@ -1,4 +1,5 @@
-// Edge-safe admin session helpers (imported by middleware — keep free of Node-only deps).
+// Edge-safe session helpers (imported by middleware — keep free of Node-only deps).
+// One signed cookie serves both the admin and worker logins; `scope` tells them apart.
 import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import { env, hasAdminPassword, isProductionLike } from '@/lib/env';
@@ -6,6 +7,15 @@ import { env, hasAdminPassword, isProductionLike } from '@/lib/env';
 export const ADMIN_AUTH_COOKIE = 'casepoint-admin-session';
 const DEFAULT_SESSION_HOURS = 24;
 const encoder = new TextEncoder();
+
+export type SessionPayload = {
+  scope: 'admin' | 'worker';
+  email?: string;
+  /** Set when scope === 'worker'. */
+  workerId?: string;
+  name?: string;
+  expiresAt: string;
+};
 
 function base64url(input: string) {
   return Buffer.from(input, 'utf8').toString('base64url');
@@ -48,10 +58,9 @@ export function isAdminAuthEnabled() {
   return hasAdminPassword();
 }
 
-export async function createAdminSessionToken() {
-  const payload = {
-    scope: 'admin',
-    email: env.adminEmail,
+export async function createSessionToken(input: Omit<SessionPayload, 'expiresAt'>) {
+  const payload: SessionPayload = {
+    ...input,
     expiresAt: new Date(Date.now() + getSessionHours() * 60 * 60 * 1000).toISOString(),
   };
   const encodedPayload = base64url(JSON.stringify(payload));
@@ -59,15 +68,16 @@ export async function createAdminSessionToken() {
   return `${encodedPayload}.${signature}`;
 }
 
-export async function parseAdminSessionToken(token: string | undefined | null) {
+export async function parseSessionToken(token: string | undefined | null): Promise<SessionPayload | null> {
   if (!token) return null;
   const [encodedPayload, signature] = token.split('.');
   if (!encodedPayload || !signature) return null;
   const expectedSignature = await signPayload(encodedPayload);
   if (!constantTimeEqual(signature, expectedSignature)) return null;
   try {
-    const payload = JSON.parse(decodeBase64url(encodedPayload)) as { scope?: string; email?: string; expiresAt?: string };
-    if (payload.scope !== 'admin' || !payload.expiresAt) return null;
+    const payload = JSON.parse(decodeBase64url(encodedPayload)) as SessionPayload;
+    if ((payload.scope !== 'admin' && payload.scope !== 'worker') || !payload.expiresAt) return null;
+    if (payload.scope === 'worker' && !payload.workerId) return null;
     if (new Date(payload.expiresAt).getTime() < Date.now()) return null;
     return payload;
   } catch {
@@ -75,15 +85,30 @@ export async function parseAdminSessionToken(token: string | undefined | null) {
   }
 }
 
-export async function requestHasAdminSession(request: NextRequest) {
-  if (!isAdminAuthEnabled()) return true;
-  return Boolean(await parseAdminSessionToken(request.cookies.get(ADMIN_AUTH_COOKIE)?.value));
+/** Session for the current request; falls back to an implicit admin session when no password is configured. */
+export async function getSessionFromRequest(request: NextRequest): Promise<SessionPayload | null> {
+  const parsed = await parseSessionToken(request.cookies.get(ADMIN_AUTH_COOKIE)?.value);
+  if (parsed) return parsed;
+  if (!isAdminAuthEnabled()) {
+    return { scope: 'admin', email: env.adminEmail, expiresAt: new Date(Date.now() + 60_000).toISOString() };
+  }
+  return null;
 }
 
-export async function currentRequestHasAdminSession() {
-  if (!isAdminAuthEnabled()) return true;
+/** Session in a server component / route handler context (reads cookies()). */
+export async function getCurrentSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
-  return Boolean(await parseAdminSessionToken(cookieStore.get(ADMIN_AUTH_COOKIE)?.value));
+  const parsed = await parseSessionToken(cookieStore.get(ADMIN_AUTH_COOKIE)?.value);
+  if (parsed) return parsed;
+  if (!isAdminAuthEnabled()) {
+    return { scope: 'admin', email: env.adminEmail, expiresAt: new Date(Date.now() + 60_000).toISOString() };
+  }
+  return null;
+}
+
+export async function requestHasAdminSession(request: NextRequest) {
+  const session = await getSessionFromRequest(request);
+  return Boolean(session);
 }
 
 export function adminCookieOptions() {

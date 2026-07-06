@@ -1,19 +1,30 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { env } from '@/lib/env';
-import { getClient, listClientDocuments, saveDocument } from '@/lib/store';
+import { clientVisibleTo, getClient, listClientDocuments, saveDocument } from '@/lib/store';
+import { getViewer } from '@/lib/viewer';
 
 type Params = { params: Promise<{ clientId: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const auth = await getViewer();
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
   const { clientId } = await params;
-  if (!getClient(clientId)) return NextResponse.json({ ok: false, error: 'Client not found' }, { status: 404 });
+  const client = getClient(clientId);
+  if (!client || !clientVisibleTo(client, auth.viewer)) {
+    return NextResponse.json({ ok: false, error: 'Client not found' }, { status: 404 });
+  }
   return NextResponse.json({ ok: true, data: listClientDocuments(clientId) });
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
+  const auth = await getViewer();
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
   const { clientId } = await params;
-  if (!getClient(clientId)) return NextResponse.json({ ok: false, error: 'Client not found' }, { status: 404 });
+  const client = getClient(clientId);
+  if (!client || !clientVisibleTo(client, auth.viewer)) {
+    return NextResponse.json({ ok: false, error: 'Client not found' }, { status: 404 });
+  }
 
   let form: FormData;
   try {

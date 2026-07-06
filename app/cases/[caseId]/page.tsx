@@ -4,14 +4,19 @@ import Link from 'next/link';
 import { use, useCallback, useEffect, useState } from 'react';
 import { DocumentsPanel, type DocumentItem } from '@/components/documents-panel';
 import {
+  BLANK_CONTRACT_CODE,
+  CASE_KIND_LABELS,
   CASE_STAGES,
   CHECKLIST_STATUS_LABELS,
+  COMPANY_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
   STAGE_LABELS,
   documentTemplates,
+  type CaseKind,
   type CaseStage,
   type ChecklistStatus,
+  type OperatingCompany,
   type PaymentMethod,
 } from '@/data/domain';
 
@@ -29,6 +34,12 @@ type CaseDetail = {
     notes?: string;
     description?: string;
     decision?: string;
+    company?: OperatingCompany;
+    caseKind?: CaseKind;
+    troubleFlag?: boolean;
+    troubleNote?: string;
+    openedBy?: string;
+    assignedTo?: string;
     openedAt: string;
     submittedAt?: string;
     closedAt?: string;
@@ -39,6 +50,10 @@ type CaseDetail = {
   documents: DocumentItem[];
   payments: Array<{ id: string; amount: number; method: PaymentMethod; paidAt: string; note?: string }>;
   activity: Array<{ id: string; summary: string; at: string }>;
+  workers: Array<{ id: string; name: string; email: string; active: boolean }>;
+  canManagePayments?: boolean;
+  canAssign?: boolean;
+  hasBlankContract?: boolean;
 };
 
 function shekel(amount: number) {
@@ -88,6 +103,33 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
   const caseRecord = data.case;
   const stageIndex = CASE_STAGES.indexOf(caseRecord.stage);
+
+  async function toggleTrouble() {
+    if (!caseRecord.troubleFlag) {
+      const note = window.prompt('מה חסר / מה הבעיה בתיק? (אופציונלי)') ?? '';
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ troubleFlag: true, troubleNote: note }),
+      });
+    } else {
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ troubleFlag: false, troubleNote: '' }),
+      });
+    }
+    reload();
+  }
+
+  async function assignWorker(workerId: string) {
+    await fetch(`/api/cases/${caseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedTo: workerId }),
+    });
+    reload();
+  }
 
   async function setStage(stage: CaseStage) {
     if (stage === caseRecord.stage) return;
@@ -142,6 +184,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
       description: caseRecord.description || '',
       notes: caseRecord.notes || '',
       decision: caseRecord.decision || '',
+      company: caseRecord.company || 'none',
+      caseKind: caseRecord.caseKind || 'new',
     });
     setEditingDetails(true);
   }
@@ -189,9 +233,18 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
   return (
     <div>
       <Link className="case-back-link" href="/cases">← כל התיקים</Link>
+      {caseRecord.troubleFlag && (
+        <div className="trouble-banner">
+          🚩 התיק מסומן כתקוע / נדרשת השלמה{caseRecord.troubleNote ? `: ${caseRecord.troubleNote}` : ''}
+          <button type="button" className="doc-action-btn" onClick={toggleTrouble} style={{ marginInlineStart: 12 }}>
+            הסר סימון
+          </button>
+        </div>
+      )}
       <div className="hero">
         <div>
           <span className="case-id-badge">{caseRecord.id}</span>
+          {caseRecord.caseKind === 'renewal' && <span className="kind-badge">חידוש</span>}
           <h1 style={{ margin: '6px 0 4px' }}>{caseRecord.title}</h1>
           <p className="muted" style={{ margin: 0 }}>
             {data.client && (
@@ -200,11 +253,31 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                 {' · '}
               </>
             )}
-            {caseRecord.officeName}
+            {caseRecord.company && caseRecord.company !== 'none'
+              ? `${COMPANY_LABELS[caseRecord.company]} · ${caseRecord.officeName}`
+              : caseRecord.officeName}
             {caseRecord.referenceNumber && <> · מס׳ תיק במשרד: <span dir="ltr">{caseRecord.referenceNumber}</span></>}
           </p>
         </div>
         <div className="hero-actions">
+          {!caseRecord.troubleFlag && (
+            <button type="button" className="button button-secondary button-compact trouble-toggle" onClick={toggleTrouble}>
+              🚩 סמן כתקוע
+            </button>
+          )}
+          {data.canAssign && (
+            <select
+              className="assign-select"
+              value={caseRecord.assignedTo || ''}
+              onChange={(e) => assignWorker(e.target.value)}
+              title="שיוך התיק לעובד"
+            >
+              <option value="">ללא עובד משויך</option>
+              {data.workers.map((w) => (
+                <option key={w.id} value={w.id}>👤 {w.name}</option>
+              ))}
+            </select>
+          )}
           {caseRecord.missingItems > 0 && <span className="badge danger">{caseRecord.missingItems} מסמכים חסרים</span>}
           <span className={`badge ${caseRecord.finance.status === 'paid' ? 'good' : caseRecord.finance.status === 'partial' ? 'warn' : 'danger'}`}>
             {PAYMENT_STATUS_LABELS[caseRecord.finance.status]}
@@ -254,6 +327,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               <div key={item.code} className="doc-row">
                 <div className="doc-name">
                   {item.label}
+                  {item.code === BLANK_CONTRACT_CODE && data.hasBlankContract && (
+                    <a className="mini-link" href="/api/templates/blank-contract" style={{ display: 'block', fontSize: 12 }}>
+                      ⬇ הורדת טופס ריק למילוי
+                    </a>
+                  )}
                   {item.note && <span className="muted" style={{ display: 'block', fontSize: 11 }}>{item.note}</span>}
                 </div>
                 <span className={`doc-status-badge ${item.status === 'missing' ? 'not-uploaded' : item.status === 'received' ? 'uploaded' : item.status === 'in-review' ? 'under-review' : item.status}`}>
@@ -326,6 +404,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
             </div>
             {!editingDetails ? (
               <div className="review-grid">
+                <div className="review-row"><span className="muted">חברה מטפלת</span><strong>{COMPANY_LABELS[caseRecord.company || 'none']}</strong></div>
+                <div className="review-row"><span className="muted">סוג התיק</span><strong>{CASE_KIND_LABELS[caseRecord.caseKind || 'new']}</strong></div>
                 <div className="review-row"><span className="muted">שכר טרחה</span><strong>{shekel(caseRecord.fee)}</strong></div>
                 <div className="review-row"><span className="muted">שולם</span><strong>{shekel(caseRecord.finance.paid)}</strong></div>
                 <div className="review-row"><span className="muted">פעולה הבאה</span><span>{caseRecord.nextAction || '—'}</span></div>
@@ -338,6 +418,22 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               <form onSubmit={saveDetails}>
                 <div className="form-grid cols-2">
                   <div className="field"><label>נושא התיק</label><input value={detailsForm.title} onChange={(e) => setDetailsForm({ ...detailsForm, title: e.target.value })} /></div>
+                  <div className="field">
+                    <label>חברה מטפלת</label>
+                    <select value={detailsForm.company} onChange={(e) => setDetailsForm({ ...detailsForm, company: e.target.value })}>
+                      {Object.entries(COMPANY_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label>סוג התיק</label>
+                    <select value={detailsForm.caseKind} onChange={(e) => setDetailsForm({ ...detailsForm, caseKind: e.target.value })}>
+                      {Object.entries(CASE_KIND_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="field"><label>שכר טרחה (₪)</label><input type="number" min="0" value={detailsForm.fee} onChange={(e) => setDetailsForm({ ...detailsForm, fee: e.target.value })} /></div>
                   <div className="field"><label>מס׳ תיק במשרד</label><input value={detailsForm.referenceNumber} onChange={(e) => setDetailsForm({ ...detailsForm, referenceNumber: e.target.value })} /></div>
                   <div className="field"><label>פעולה הבאה</label><input value={detailsForm.nextAction} onChange={(e) => setDetailsForm({ ...detailsForm, nextAction: e.target.value })} /></div>
@@ -353,6 +449,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
             )}
           </div>
 
+          {data.canManagePayments && (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>תשלומים לתיק</h3>
             <div className="receipt-calc" style={{ marginTop: 0, marginBottom: 14 }}>
@@ -393,6 +490,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               {payError && <p className="form-error" style={{ width: '100%' }}>{payError}</p>}
             </form>
           </div>
+          )}
 
           <div className="card">
             <h3 style={{ marginTop: 0 }}>פעילות בתיק</h3>

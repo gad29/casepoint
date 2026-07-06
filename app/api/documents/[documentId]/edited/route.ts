@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { env } from '@/lib/env';
-import { getDocument, saveDocument } from '@/lib/store';
+import { documentVisibleTo, getDocument, saveDocument } from '@/lib/store';
+import { getViewer } from '@/lib/viewer';
 
 type Params = { params: Promise<{ documentId: string }> };
 
@@ -10,9 +11,13 @@ type Params = { params: Promise<{ documentId: string }> };
  * (the original file is kept untouched). Expects multipart form data with `file`.
  */
 export async function POST(request: NextRequest, { params }: Params) {
+  const auth = await getViewer();
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
   const { documentId } = await params;
   const source = getDocument(documentId);
-  if (!source) return NextResponse.json({ ok: false, error: 'Document not found' }, { status: 404 });
+  if (!source || !documentVisibleTo(source, auth.viewer)) {
+    return NextResponse.json({ ok: false, error: 'Document not found' }, { status: 404 });
+  }
 
   let form: FormData;
   try {

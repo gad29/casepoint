@@ -1,13 +1,21 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import type { ChecklistStatus } from '@/data/domain';
-import { addChecklistItem, getCase, removeChecklistItem, updateChecklistItem } from '@/lib/store';
+import { addChecklistItem, caseVisibleTo, getCase, removeChecklistItem, updateChecklistItem } from '@/lib/store';
+import { getViewer } from '@/lib/viewer';
 
 type Params = { params: Promise<{ caseId: string }> };
 
+async function guardCase(caseId: string) {
+  const auth = await getViewer();
+  if (!auth) return false;
+  const caseRecord = getCase(caseId);
+  return Boolean(caseRecord && caseVisibleTo(caseRecord, auth.viewer));
+}
+
 export async function POST(request: NextRequest, { params }: Params) {
   const { caseId } = await params;
-  if (!getCase(caseId)) return NextResponse.json({ ok: false, error: 'Case not found' }, { status: 404 });
+  if (!(await guardCase(caseId))) return NextResponse.json({ ok: false, error: 'Case not found' }, { status: 404 });
 
   let body: { label?: string; code?: string };
   try {
@@ -23,6 +31,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { caseId } = await params;
+  if (!(await guardCase(caseId))) return NextResponse.json({ ok: false, error: 'Case not found' }, { status: 404 });
   let body: { code?: string; status?: ChecklistStatus; note?: string; label?: string };
   try {
     body = await request.json();
@@ -38,6 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { caseId } = await params;
+  if (!(await guardCase(caseId))) return NextResponse.json({ ok: false, error: 'Case not found' }, { status: 404 });
   const code = request.nextUrl.searchParams.get('code');
   if (!code) return NextResponse.json({ ok: false, error: 'Missing checklist item code' }, { status: 400 });
   const removed = removeChecklistItem(caseId, code);

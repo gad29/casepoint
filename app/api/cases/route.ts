@@ -1,12 +1,28 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { countMissingItems, officeDisplayName, type GovernmentOffice } from '@/data/domain';
-import { createCase, getCaseFinance, listCases, listClients, listPayments } from '@/lib/store';
+import {
+  countMissingItems,
+  officeDisplayName,
+  type CaseKind,
+  type GovernmentOffice,
+  type OperatingCompany,
+} from '@/data/domain';
+import { createCase, getCaseFinance, listClients, listPayments, listVisibleCases, listWorkers } from '@/lib/store';
+import { actorId, getViewer } from '@/lib/viewer';
 
 export async function GET() {
-  const cases = listCases();
+  const auth = await getViewer();
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
+
+  const cases = listVisibleCases(auth.viewer);
   const clients = listClients();
   const payments = listPayments();
+  const workers = listWorkers();
+
+  function workerName(id?: string) {
+    if (!id || id === 'admin') return '';
+    return workers.find((w) => w.id === id)?.name || '';
+  }
 
   const enriched = cases.map((caseRecord) => {
     const client = clients.find((c) => c.id === caseRecord.clientId);
@@ -17,6 +33,8 @@ export async function GET() {
       officeName: officeDisplayName(caseRecord),
       missingItems: countMissingItems(caseRecord),
       finance: getCaseFinance(caseRecord, payments),
+      openedByName: workerName(caseRecord.openedBy),
+      assignedToName: workerName(caseRecord.assignedTo),
     };
   });
 
@@ -24,6 +42,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await getViewer();
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
+
   let body: {
     clientId?: string;
     title?: string;
@@ -32,6 +53,8 @@ export async function POST(request: NextRequest) {
     description?: string;
     fee?: number;
     nextAction?: string;
+    company?: OperatingCompany;
+    caseKind?: CaseKind;
     checklistCodes?: string[];
     customChecklist?: string[];
   };
@@ -41,18 +64,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Invalid request body' }, { status: 400 });
   }
 
-  if (!body.clientId || !body.title?.trim() || !body.office) {
-    return NextResponse.json({ ok: false, error: 'לקוח, כותרת תיק ומשרד ממשלתי הם שדות חובה' }, { status: 400 });
+  if (!body.clientId || !body.title?.trim()) {
+    return NextResponse.json({ ok: false, error: 'לקוח וכותרת תיק הם שדות חובה' }, { status: 400 });
   }
 
   const record = createCase({
     clientId: body.clientId,
     title: body.title,
-    office: body.office,
+    office: body.office || 'housing-ministry',
     officeOther: body.officeOther,
     description: body.description,
     fee: body.fee,
     nextAction: body.nextAction,
+    company: body.company,
+    caseKind: body.caseKind,
+    openedBy: actorId(auth.session),
     checklistCodes: body.checklistCodes,
     customChecklist: body.customChecklist,
   });

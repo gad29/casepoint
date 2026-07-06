@@ -1,13 +1,31 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { requestHasAdminSession } from '@/lib/admin-session';
+import { getSessionFromRequest } from '@/lib/admin-session';
 import { env } from '@/lib/env';
 
-/** Paths that stay reachable without an admin session. */
+/** Paths that stay reachable without a session. */
 function isPublicPath(pathname: string) {
   if (pathname === '/login') return true;
   if (pathname === '/api/auth/login' || pathname === '/api/auth/me') return true;
   return false;
+}
+
+/** Pages and APIs reserved for the admin (workers are redirected / rejected). */
+function isAdminOnlyPath(pathname: string) {
+  return (
+    pathname === '/payments' ||
+    pathname.startsWith('/payments/') ||
+    pathname === '/workers' ||
+    pathname.startsWith('/workers/') ||
+    pathname === '/settings' ||
+    pathname.startsWith('/settings/') ||
+    pathname === '/connections' ||
+    pathname.startsWith('/api/payments') ||
+    pathname.startsWith('/api/workers') ||
+    pathname.startsWith('/api/settings') ||
+    pathname.startsWith('/api/import') ||
+    pathname.startsWith('/api/summary')
+  );
 }
 
 /** Integration endpoints n8n calls with the shared API token instead of a session cookie. */
@@ -24,7 +42,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (await requestHasAdminSession(request)) {
+  const session = await getSessionFromRequest(request);
+
+  if (session) {
+    if (session.scope === 'worker' && isAdminOnlyPath(pathname)) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ ok: false, error: 'Admin access required' }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
     return NextResponse.next();
   }
 
@@ -34,7 +60,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ ok: false, error: 'Admin sign-in required' }, { status: 401 });
+    return NextResponse.json({ ok: false, error: 'Sign-in required' }, { status: 401 });
   }
 
   const loginUrl = new URL('/login', request.url);

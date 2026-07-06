@@ -31,11 +31,13 @@ type ClientDetail = {
     office: string;
     officeOther?: string;
     missingItems: number;
+    troubleFlag?: boolean;
     finance: { fee: number; paid: number; balance: number; status: 'paid' | 'partial' | 'unpaid' };
   }>;
   documents: DocumentItem[];
   payments: Array<{ id: string; amount: number; method: PaymentMethod; paidAt: string; caseId?: string; note?: string }>;
   activity: Array<{ id: string; summary: string; at: string }>;
+  canManagePayments?: boolean;
 };
 
 function shekel(amount: number) {
@@ -62,8 +64,8 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabId>('cases');
   const [editForm, setEditForm] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedNote, setSavedNote] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'bank-transfer', caseId: '', note: '' });
   const [payError, setPayError] = useState('');
 
@@ -71,7 +73,19 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
     fetch(`/api/clients/${clientId}`)
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok) setData(d.data);
+        if (d.ok) {
+          setData(d.data);
+          const c = d.data.client;
+          setEditForm({
+            fullName: c.fullName,
+            phone: c.phone,
+            idNumber: c.idNumber || '',
+            email: c.email || '',
+            city: c.city || '',
+            address: c.address || '',
+            notes: c.notes || '',
+          });
+        }
       })
       .catch(() => null)
       .finally(() => setLoading(false));
@@ -87,29 +101,17 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
   const { client, cases, documents, payments, activity } = data;
   const totalBalance = cases.reduce((sum, c) => sum + c.finance.balance, 0);
 
-  function startEdit() {
-    setEditForm({
-      fullName: client.fullName,
-      phone: client.phone,
-      idNumber: client.idNumber || '',
-      email: client.email || '',
-      city: client.city || '',
-      address: client.address || '',
-      notes: client.notes || '',
-    });
-    setEditing(true);
-  }
-
   async function saveEdit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
+    setSavedNote(false);
     try {
       await fetch(`/api/clients/${clientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
       });
-      setEditing(false);
+      setSavedNote(true);
       reload();
     } finally {
       setSaving(false);
@@ -170,7 +172,7 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
       </div>
 
       <div className="tab-bar">
-        {TABS.map(({ id, label }) => (
+        {TABS.filter(({ id }) => id !== 'payments' || data.canManagePayments).map(({ id, label }) => (
           <button key={id} type="button" className={`tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
             {label}
             {id === 'documents' && documents.length > 0 && ` (${documents.length})`}
@@ -185,8 +187,8 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
             <div className="card muted" style={{ padding: 24 }}>אין תיקים ללקוח זה. פתח תיק חדש כדי להתחיל.</div>
           )}
           {cases.map((c) => (
-            <Link key={c.id} className="case-list-item" href={`/cases/${c.id}` as never}>
-              <span className="cli-name">{c.title}</span>
+            <Link key={c.id} className={`case-list-item ${c.troubleFlag ? 'case-trouble' : ''}`} href={`/cases/${c.id}` as never}>
+              <span className="cli-name">{c.troubleFlag && '🚩 '}{c.title}</span>
               <span className="cli-stage">{STAGE_LABELS[c.stage]}</span>
               <span className="cli-meta">
                 <span>{c.officeName}</span>
@@ -274,53 +276,37 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
 
       {tab === 'details' && (
         <div className="card" style={{ maxWidth: 640 }}>
-          {!editing ? (
-            <>
-              <div className="section-heading">
-                <h3 style={{ margin: 0 }}>פרטי לקוח</h3>
-                <button type="button" className="button button-secondary button-compact" onClick={startEdit}>עריכה</button>
-              </div>
-              <div className="review-grid">
-                <div className="review-row"><span className="muted">שם מלא</span><strong>{client.fullName}</strong></div>
-                <div className="review-row"><span className="muted">טלפון</span><strong dir="ltr">{client.phone}</strong></div>
-                <div className="review-row"><span className="muted">תעודת זהות</span><strong dir="ltr">{client.idNumber || '—'}</strong></div>
-                <div className="review-row"><span className="muted">אימייל</span><strong dir="ltr">{client.email || '—'}</strong></div>
-                <div className="review-row"><span className="muted">עיר</span><strong>{client.city || '—'}</strong></div>
-                <div className="review-row"><span className="muted">כתובת</span><strong>{client.address || '—'}</strong></div>
-                <div className="review-row"><span className="muted">הצטרף</span><strong>{formatDate(client.createdAt)}</strong></div>
-                {client.notes && <div className="review-row"><span className="muted">הערות</span><span>{client.notes}</span></div>}
-              </div>
-            </>
-          ) : (
-            <form onSubmit={saveEdit}>
-              <h3 style={{ marginTop: 0 }}>עריכת פרטים</h3>
-              <div className="form-grid cols-2">
-                {(
-                  [
-                    ['fullName', 'שם מלא'],
-                    ['phone', 'טלפון'],
-                    ['idNumber', 'תעודת זהות'],
-                    ['email', 'אימייל'],
-                    ['city', 'עיר'],
-                    ['address', 'כתובת'],
-                  ] as const
-                ).map(([key, label]) => (
-                  <div className="field" key={key}>
-                    <label>{label}</label>
-                    <input value={editForm[key] ?? ''} onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })} />
-                  </div>
-                ))}
-              </div>
-              <div className="field">
-                <label>הערות</label>
-                <textarea rows={3} value={editForm.notes ?? ''} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
-              </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button className="button" type="submit" disabled={saving}>{saving ? 'שומר…' : 'שמור'}</button>
-                <button className="button button-secondary" type="button" onClick={() => setEditing(false)}>ביטול</button>
-              </div>
-            </form>
-          )}
+          <form onSubmit={saveEdit}>
+            <div className="section-heading">
+              <h3 style={{ margin: 0 }}>פרטי לקוח</h3>
+              <span className="muted" style={{ fontSize: 12 }}>הצטרף {formatDate(client.createdAt)}</span>
+            </div>
+            <div className="form-grid cols-2">
+              {(
+                [
+                  ['fullName', 'שם מלא'],
+                  ['phone', 'טלפון'],
+                  ['idNumber', 'תעודת זהות'],
+                  ['email', 'אימייל'],
+                  ['city', 'עיר'],
+                  ['address', 'כתובת'],
+                ] as const
+              ).map(([key, label]) => (
+                <div className="field" key={key}>
+                  <label>{label}</label>
+                  <input value={editForm[key] ?? ''} onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })} />
+                </div>
+              ))}
+            </div>
+            <div className="field">
+              <label>הערות</label>
+              <textarea rows={3} value={editForm.notes ?? ''} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <button className="button" type="submit" disabled={saving}>{saving ? 'שומר…' : 'שמור שינויים'}</button>
+              {savedNote && <span className="text-feedback-success" style={{ fontWeight: 600 }}>✓ נשמר</span>}
+            </div>
+          </form>
         </div>
       )}
 

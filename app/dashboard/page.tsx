@@ -1,6 +1,16 @@
 import Link from 'next/link';
-import { countMissingItems, officeDisplayName, STAGE_LABELS, type CaseStage } from '@/data/domain';
-import { getCaseFinance, getDashboardSummary, listActivity, listCases, listClients, listPayments } from '@/lib/store';
+import { COMPANY_LABELS, countMissingItems, officeDisplayName, STAGE_LABELS, type CaseStage } from '@/data/domain';
+import { getCurrentSession } from '@/lib/admin-session';
+import {
+  caseVisibleTo,
+  getCaseFinance,
+  getDashboardSummary,
+  listActivity,
+  listClients,
+  listPayments,
+  listVisibleCases,
+} from '@/lib/store';
+import { sessionToViewer } from '@/lib/viewer';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,15 +22,23 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function DashboardPage() {
-  const summary = getDashboardSummary();
+export default async function DashboardPage() {
+  const session = await getCurrentSession();
+  const viewer = session ? sessionToViewer(session) : ({ role: 'admin' } as const);
+  const isAdmin = viewer.role === 'admin';
+
+  const summary = getDashboardSummary(isAdmin ? undefined : (c) => caseVisibleTo(c, viewer));
   const clients = listClients();
   const payments = listPayments();
-  const cases = listCases();
-  const activity = listActivity({ limit: 12 });
+  const cases = listVisibleCases(viewer);
+  const clientIds = new Set(cases.map((c) => c.clientId));
+  const activity = listActivity({ limit: 40 }).filter(
+    (entry) => isAdmin || (entry.clientId && clientIds.has(entry.clientId)),
+  ).slice(0, 12);
 
   const attention = cases
-    .filter((c) => c.stage !== 'closed' && (countMissingItems(c) > 0 || c.stage === 'action-required'))
+    .filter((c) => c.stage !== 'closed' && (c.troubleFlag || countMissingItems(c) > 0 || c.stage === 'action-required'))
+    .sort((a, b) => Number(Boolean(b.troubleFlag)) - Number(Boolean(a.troubleFlag)))
     .slice(0, 8)
     .map((c) => ({
       ...c,
@@ -28,11 +46,13 @@ export default function DashboardPage() {
       missing: countMissingItems(c),
     }));
 
-  const unpaidClosed = cases
-    .filter((c) => c.stage === 'closed')
-    .map((c) => ({ ...c, finance: getCaseFinance(c, payments), clientName: clients.find((cl) => cl.id === c.clientId)?.fullName || '' }))
-    .filter((c) => c.finance.balance > 0)
-    .slice(0, 5);
+  const unpaidClosed = isAdmin
+    ? cases
+        .filter((c) => c.stage === 'closed')
+        .map((c) => ({ ...c, finance: getCaseFinance(c, payments), clientName: clients.find((cl) => cl.id === c.clientId)?.fullName || '' }))
+        .filter((c) => c.finance.balance > 0)
+        .slice(0, 5)
+    : [];
 
   const stageOrder = Object.keys(STAGE_LABELS) as CaseStage[];
 
@@ -41,8 +61,10 @@ export default function DashboardPage() {
       <div className="hero">
         <div>
           <p className="eyebrow">לוח בקרה</p>
-          <h1 style={{ margin: '6px 0 4px' }}>שלום 👋</h1>
-          <p className="muted" style={{ margin: 0 }}>תמונת מצב של כל הלקוחות והתיקים.</p>
+          <h1 style={{ margin: '6px 0 4px' }}>שלום{session?.name ? ` ${session.name}` : ''} 👋</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            {isAdmin ? 'תמונת מצב של כל הלקוחות והתיקים.' : 'התיקים והלקוחות שלך.'}
+          </p>
         </div>
         <div className="hero-actions">
           <Link className="button" href={'/clients?new=1' as never}>+ לקוח חדש</Link>
@@ -62,15 +84,22 @@ export default function DashboardPage() {
           <div className="muted" style={{ fontSize: 12 }}>תיקים פתוחים עם מסמכים חסרים</div>
         </div>
         <div className="pipeline-card pc-stuck">
-          <div className="pc-label">נדרשת השלמה</div>
-          <div className="pc-count">{summary.actionRequired}</div>
-          <div className="muted" style={{ fontSize: 12 }}>המשרד ביקש השלמות</div>
+          <div className="pc-label">🚩 דורשים טיפול</div>
+          <div className="pc-count">{summary.troubleCases}</div>
+          <div className="muted" style={{ fontSize: 12 }}>תיקים שסומנו כתקועים / נדרשת השלמה</div>
         </div>
-        <div className="pipeline-card pc-done">
-          <div className="pc-label">יתרה לגבייה</div>
-          <div className="pc-count" style={{ fontSize: 34 }}>{shekel(summary.totalOutstanding)}</div>
-          <div className="muted" style={{ fontSize: 12 }}>שולם {shekel(summary.totalPaid)} מתוך {shekel(summary.totalFees)}</div>
-        </div>
+        {isAdmin ? (
+          <div className="pipeline-card pc-done">
+            <div className="pc-label">יתרה לגבייה</div>
+            <div className="pc-count" style={{ fontSize: 34 }}>{shekel(summary.totalOutstanding)}</div>
+            <div className="muted" style={{ fontSize: 12 }}>שולם {shekel(summary.totalPaid)} מתוך {shekel(summary.totalFees)}</div>
+          </div>
+        ) : (
+          <div className="pipeline-card pc-done">
+            <div className="pc-label">תיקים סגורים</div>
+            <div className="pc-count">{summary.closedCases}</div>
+          </div>
+        )}
       </div>
 
       <div className="grid cols-2">
@@ -84,12 +113,13 @@ export default function DashboardPage() {
           ) : (
             <div className="urgent-list">
               {attention.map((c) => (
-                <Link key={c.id} className="urgent-item" href={`/cases/${c.id}` as never}>
-                  <span className={`urgent-dot ${c.stage === 'action-required' ? 'danger' : ''}`} />
+                <Link key={c.id} className={`urgent-item ${c.troubleFlag ? 'urgent-trouble' : ''}`} href={`/cases/${c.id}` as never}>
+                  <span className={`urgent-dot ${c.troubleFlag || c.stage === 'action-required' ? 'danger' : ''}`} />
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <strong>{c.clientName}</strong> · {c.title}
+                    <strong>{c.troubleFlag && '🚩 '}{c.clientName}</strong> · {c.title}
                     <span className="muted" style={{ display: 'block', fontSize: 12 }}>
-                      {officeDisplayName(c)} · {STAGE_LABELS[c.stage]}
+                      {c.company && c.company !== 'none' ? COMPANY_LABELS[c.company] : officeDisplayName(c)} · {STAGE_LABELS[c.stage]}
+                      {c.troubleNote && ` · ${c.troubleNote}`}
                     </span>
                   </span>
                   {c.missing > 0 && <span className="badge danger">{c.missing} חסרים</span>}

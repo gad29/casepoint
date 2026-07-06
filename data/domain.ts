@@ -74,6 +74,23 @@ export const OFFICE_LABELS: Record<GovernmentOffice, string> = {
   'other': 'אחר',
 };
 
+/** Operating company handling the case (e.g. rent-assistance operators). */
+export type OperatingCompany = 'milgam' | 'alonim' | 'maof' | 'none';
+
+export const COMPANY_LABELS: Record<OperatingCompany, string> = {
+  'milgam': 'מילגם',
+  'alonim': 'אלונים',
+  'maof': 'מעוף',
+  'none': 'ללא / אחר',
+};
+
+export type CaseKind = 'new' | 'renewal';
+
+export const CASE_KIND_LABELS: Record<CaseKind, string> = {
+  'new': 'תיק חדש',
+  'renewal': 'חידוש',
+};
+
 export type ChecklistStatus =
   | 'missing'
   | 'received'
@@ -111,6 +128,18 @@ export interface ClientRecord {
   address?: string;
   city?: string;
   notes?: string;
+  /** Worker id who created the client; 'admin' or absent for the admin. */
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkerRecord {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  active: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -126,6 +155,17 @@ export interface CaseRecord {
   description?: string;
   stage: CaseStage;
   checklist: ChecklistItem[];
+  /** Operating company the case is handled through. */
+  company?: OperatingCompany;
+  /** New application or renewal. */
+  caseKind?: CaseKind;
+  /** Red flag: the case is stuck / needs additional information or documents. */
+  troubleFlag?: boolean;
+  troubleNote?: string;
+  /** Worker id who opened the case ('admin' when opened by the admin). */
+  openedBy?: string;
+  /** Worker id the admin assigned the case to. */
+  assignedTo?: string;
   /** Agreed fee in ILS. */
   fee: number;
   /** Reference / file number assigned by the government office. */
@@ -217,27 +257,22 @@ export interface DocumentTemplate {
 }
 
 export const documentTemplates: DocumentTemplate[] = [
-  { code: 'id-card', label: 'תעודת זהות + ספח פתוח' },
-  { code: 'power-of-attorney', label: 'ייפוי כוח למגיש הבקשה' },
-  { code: 'application-form', label: 'טופס בקשה רשמי חתום' },
-  { code: 'bank-account-confirmation', label: 'אישור ניהול חשבון בנק' },
-  { code: 'payslips-3m', label: 'תלושי שכר – 3 חודשים אחרונים' },
-  { code: 'bank-statements-3m', label: 'תדפיסי עו"ש – 3 חודשים אחרונים' },
-  { code: 'income-confirmation', label: 'אישור הכנסות / שומת מס', offices: ['tax-authority', 'bituach-leumi'] },
-  { code: 'medical-documents', label: 'מסמכים רפואיים עדכניים', offices: ['bituach-leumi', 'health-ministry'] },
-  { code: 'medical-committee-summary', label: 'סיכום ועדה רפואית קודמת', offices: ['bituach-leumi'] },
-  { code: 'rent-contract', label: 'חוזה שכירות', offices: ['housing-ministry', 'municipality'] },
-  { code: 'residence-confirmation', label: 'אישור תושבות מהרשות המקומית', offices: ['municipality', 'bituach-leumi'] },
-  { code: 'marriage-certificate', label: 'תעודת נישואין', offices: ['population-authority'] },
-  { code: 'birth-certificate', label: 'תעודת לידה', offices: ['population-authority'] },
-  { code: 'passport-photos', label: 'תמונות פספורט', offices: ['population-authority'] },
+  { code: 'id-spouses', label: 'תעודת זהות וספח — שני בני הזוג' },
+  { code: 'payslips-6m', label: 'תלושי שכר — 6 חודשים אחרונים' },
+  { code: 'non-working-status', label: 'אישור מעמד לא עובד' },
+  { code: 'kollel-confirmation', label: 'אישור כולל' },
+  { code: 'marriage-certificate', label: 'תעודת נישואין' },
   { code: 'employer-letter', label: 'מכתב מעסיק / אישור העסקה' },
-  { code: 'unemployment-confirmation', label: 'אישור מלשכת התעסוקה', offices: ['bituach-leumi', 'welfare-ministry'] },
-  { code: 'affidavit', label: 'תצהיר חתום בפני עו"ד' },
-  { code: 'court-decision', label: 'פסק דין / החלטת בית משפט', offices: ['courts-enforcement'] },
-  { code: 'vehicle-license', label: 'רישיון רכב', offices: ['transport-ministry'] },
-  { code: 'teudat-oleh', label: 'תעודת עולה', offices: ['aliyah-ministry'] },
+  { code: 'request-letter', label: 'מכתב בקשה' },
+  { code: 'bank-statements', label: 'עובר ושב' },
+  { code: 'rent-contract', label: 'חוזה שכירות' },
 ];
+
+/** Codes seeded into every new case's checklist (rent contract included — a blank
+ *  template uploaded once in Settings is downloadable from every case). */
+export const DEFAULT_CHECKLIST_CODES = documentTemplates.map((t) => t.code);
+
+export const BLANK_CONTRACT_CODE = 'rent-contract';
 
 /** Checklist statuses that still block submission. */
 export function checklistItemIsMissing(item: ChecklistItem) {

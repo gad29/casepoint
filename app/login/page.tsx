@@ -3,9 +3,13 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+type Mode = 'admin' | 'worker';
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [mode, setMode] = useState<Mode>('admin');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,7 +22,7 @@ function LoginForm() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email: mode === 'worker' ? email : '', password }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -46,17 +50,47 @@ function LoginForm() {
           </div>
         </div>
         <div className="card staff-login-card" style={{ marginTop: 20, textAlign: 'start' }}>
-          <h2 style={{ marginTop: 0 }}>כניסת מנהל</h2>
-          <p className="muted" style={{ marginTop: -6 }}>המערכת פרטית — כניסה למנהל בלבד.</p>
+          <div className="language-switch" style={{ marginBottom: 16 }}>
+            <button
+              type="button"
+              className={`language-option ${mode === 'admin' ? 'active' : ''}`}
+              onClick={() => setMode('admin')}
+            >
+              מנהל
+            </button>
+            <button
+              type="button"
+              className={`language-option ${mode === 'worker' ? 'active' : ''}`}
+              onClick={() => setMode('worker')}
+            >
+              עובד
+            </button>
+          </div>
+          <h2 style={{ marginTop: 0 }}>{mode === 'admin' ? 'כניסת מנהל' : 'כניסת עובד'}</h2>
           <form onSubmit={submit}>
+            {mode === 'worker' && (
+              <div className="field">
+                <label htmlFor="worker-email">אימייל</label>
+                <input
+                  id="worker-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  dir="ltr"
+                  style={{ textAlign: 'right' }}
+                  autoComplete="username"
+                />
+              </div>
+            )}
             <div className="field">
-              <label htmlFor="admin-password">סיסמה</label>
+              <label htmlFor="login-password">סיסמה</label>
               <input
-                id="admin-password"
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoFocus
+                autoFocus={mode === 'admin'}
                 autoComplete="current-password"
               />
             </div>
