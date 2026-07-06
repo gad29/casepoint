@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { DocumentsPanel, type DocumentItem } from '@/components/documents-panel';
 import {
   BLANK_CONTRACT_CODE,
@@ -83,6 +83,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
   const [editingDetails, setEditingDetails] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'bank-transfer', note: '' });
   const [payError, setPayError] = useState('');
+  const [uploadingCode, setUploadingCode] = useState<string | null>(null);
+  const checklistUploadRef = useRef<HTMLInputElement>(null);
+  const uploadCodeRef = useRef<string | null>(null);
 
   const reload = useCallback(() => {
     fetch(`/api/cases/${caseId}`)
@@ -103,6 +106,31 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
   const caseRecord = data.case;
   const stageIndex = CASE_STAGES.indexOf(caseRecord.stage);
+
+  function pickFilesFor(code: string) {
+    uploadCodeRef.current = code;
+    checklistUploadRef.current?.click();
+  }
+
+  async function uploadForChecklist(files: FileList | null) {
+    const code = uploadCodeRef.current;
+    if (!files || !files.length || !code) return;
+    setUploadingCode(code);
+    try {
+      const form = new FormData();
+      for (const file of Array.from(files)) form.append('file', file);
+      form.append('caseId', caseId);
+      form.append('checklistCode', code);
+      const res = await fetch(`/api/clients/${caseRecord.clientId}/documents`, { method: 'POST', body: form });
+      const result = await res.json();
+      if (!res.ok || !result.ok) window.alert(result.error || 'ההעלאה נכשלה');
+      reload();
+    } finally {
+      setUploadingCode(null);
+      uploadCodeRef.current = null;
+      if (checklistUploadRef.current) checklistUploadRef.current.value = '';
+    }
+  }
 
   async function toggleTrouble() {
     if (!caseRecord.troubleFlag) {
@@ -323,6 +351,13 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               </span>
             </div>
             {caseRecord.checklist.length === 0 && <p className="muted">אין פריטים ברשימה. הוסף מסמכים נדרשים למטה.</p>}
+            <input
+              ref={checklistUploadRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => void uploadForChecklist(e.target.files)}
+            />
             {caseRecord.checklist.map((item) => (
               <div key={item.code} className="doc-row">
                 <div className="doc-name">
@@ -332,12 +367,34 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                       ⬇ הורדת טופס ריק למילוי
                     </a>
                   )}
+                  {item.documentIds.length > 0 && (
+                    <span className="doc-file-chips">
+                      {item.documentIds.map((docId) => {
+                        const doc = data.documents.find((d) => d.id === docId);
+                        if (!doc) return null;
+                        return (
+                          <a key={docId} className="doc-file-chip" href={`/api/documents/${docId}`} target="_blank" rel="noreferrer" title={doc.label || doc.originalName}>
+                            📎 {doc.label || doc.originalName}
+                          </a>
+                        );
+                      })}
+                    </span>
+                  )}
                   {item.note && <span className="muted" style={{ display: 'block', fontSize: 11 }}>{item.note}</span>}
                 </div>
                 <span className={`doc-status-badge ${item.status === 'missing' ? 'not-uploaded' : item.status === 'received' ? 'uploaded' : item.status === 'in-review' ? 'under-review' : item.status}`}>
                   {CHECKLIST_STATUS_LABELS[item.status]}
                 </span>
                 <div className="doc-actions">
+                  <button
+                    type="button"
+                    className="doc-action-btn approve"
+                    disabled={uploadingCode === item.code}
+                    onClick={() => pickFilesFor(item.code)}
+                    title="העלאת קבצים למסמך זה — אפשר לבחור כמה קבצים יחד"
+                  >
+                    {uploadingCode === item.code ? '⏳ מעלה…' : '⬆ העלאה'}
+                  </button>
                   {CHECKLIST_ACTIONS.filter((action) => action.status !== item.status)
                     .slice(0, 3)
                     .map((action) => (

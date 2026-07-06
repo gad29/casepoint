@@ -152,7 +152,9 @@ export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, 
           </div>
         )}
         <div className="upload-zone-hint">
-          {uploading ? 'מעלה…' : 'PDF, תמונות, וורד — כל סוג קובץ. הקבצים נשמרים בתיקיית הלקוח.'}
+          {uploading
+            ? 'מעלה…'
+            : 'PDF, תמונות, וורד — כל סוג קובץ. אפשר לבחור או לגרור כמה קבצים בבת אחת (למשל ת"ז של שני בני הזוג). הקבצים נשמרים בתיקיית הלקוח.'}
         </div>
       </div>
       {error && <p className="form-error" style={{ marginTop: 10 }}>{error}</p>}
