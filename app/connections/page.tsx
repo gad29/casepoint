@@ -6,8 +6,11 @@ const EVENTS = [
   { path: 'casepoint/client-created', description: 'לקוח חדש נוצר — למשל: הוספת שורה בגוגל שיטס, הודעת ברוכים הבאים' },
   { path: 'casepoint/case-created', description: 'תיק חדש נפתח — עדכון טבלת מעקב, יומן משימות' },
   { path: 'casepoint/case-stage-changed', description: 'שלב תיק השתנה — שליחת עדכון ללקוח במייל/וואטסאפ, תזכורות' },
+  { path: 'casepoint/case-trouble-flag', description: 'תיק סומן כתקוע / נדרשת השלמה — התראה מיידית' },
+  { path: 'casepoint/case-decision', description: 'עודכנה החלטת המשרד (אושר / חקירה / נדחה)' },
   { path: 'casepoint/document-uploaded', description: 'מסמך הועלה — גיבוי לדרייב, עדכון סטטוס' },
   { path: 'casepoint/payment-recorded', description: 'תשלום נרשם — הפקת קבלה, עדכון גיליון הכנסות' },
+  { path: 'casepoint/task-assigned', description: 'משימה הוקצתה לעובד — מייל אוטומטי לעובד' },
   { path: 'casepoint/meeting-request', description: 'בקשת פגישה (נשלח ידנית/מסוכן AI) — קביעת פגישה ביומן גוגל' },
   { path: 'casepoint/daily-summary', description: 'סיכום יומי (מופעל מתוזמן ב-n8n שקורא מ-GET /api/summary)' },
 ];
@@ -104,6 +107,7 @@ export default function ConnectionsPage() {
         <h3 style={{ marginTop: 0 }}>נקודות API לשימוש n8n</h3>
         <ul className="list" style={{ fontSize: 13 }}>
           <li><code dir="ltr">GET /api/summary</code> — סיכום מלא: כל התיקים, שלבים, חובות ותשלומים (לסנכרון לגוגל שיטס).</li>
+          <li><code dir="ltr">GET /api/tasks/due?markSent=1</code> — תזכורות משימות שהגיע זמנן, כולל פרטי קשר וערוצי שליחה (וורקפלואו 06 בודק כל 10 דקות).</li>
           <li><code dir="ltr">GET /api/clients</code> — רשימת לקוחות.</li>
           <li><code dir="ltr">GET /api/cases</code> — רשימת תיקים כולל סטטוס כספי.</li>
           <li><code dir="ltr">POST /api/webhooks/n8n</code> — שליחת אירוע מותאם אישית ל-n8n מתוך המערכת.</li>

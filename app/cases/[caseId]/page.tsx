@@ -9,6 +9,8 @@ import {
   CASE_STAGES,
   CHECKLIST_STATUS_LABELS,
   COMPANY_LABELS,
+  DECISION_LABELS,
+  INVESTIGATION_OUTCOME_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
   STAGE_LABELS,
@@ -16,6 +18,8 @@ import {
   type CaseKind,
   type CaseStage,
   type ChecklistStatus,
+  type DecisionStatus,
+  type InvestigationOutcome,
   type OperatingCompany,
   type PaymentMethod,
 } from '@/data/domain';
@@ -34,6 +38,8 @@ type CaseDetail = {
     notes?: string;
     description?: string;
     decision?: string;
+    decisionStatus?: DecisionStatus;
+    investigationOutcome?: InvestigationOutcome;
     company?: OperatingCompany;
     caseKind?: CaseKind;
     troubleFlag?: boolean;
@@ -130,6 +136,15 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
       uploadCodeRef.current = null;
       if (checklistUploadRef.current) checklistUploadRef.current.value = '';
     }
+  }
+
+  async function setDecision(patch: { decisionStatus?: DecisionStatus; investigationOutcome?: InvestigationOutcome | '' }) {
+    await fetch(`/api/cases/${caseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    reload();
   }
 
   async function toggleTrouble() {
@@ -307,6 +322,21 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
             </select>
           )}
           {caseRecord.missingItems > 0 && <span className="badge danger">{caseRecord.missingItems} מסמכים חסרים</span>}
+          {caseRecord.decisionStatus && (
+            <span
+              className={`badge ${
+                caseRecord.investigationOutcome === 'rejected'
+                  ? 'danger'
+                  : caseRecord.decisionStatus === 'approved' || caseRecord.investigationOutcome === 'approved'
+                    ? 'good'
+                    : 'warn'
+              }`}
+            >
+              {caseRecord.decisionStatus === 'investigation'
+                ? `חקירה${caseRecord.investigationOutcome ? ` → ${INVESTIGATION_OUTCOME_LABELS[caseRecord.investigationOutcome]}` : ''}`
+                : DECISION_LABELS[caseRecord.decisionStatus]}
+            </span>
+          )}
           <span className={`badge ${caseRecord.finance.status === 'paid' ? 'good' : caseRecord.finance.status === 'partial' ? 'warn' : 'danger'}`}>
             {PAYMENT_STATUS_LABELS[caseRecord.finance.status]}
             {caseRecord.finance.balance > 0 && ` · יתרה ${shekel(caseRecord.finance.balance)}`}
@@ -452,6 +482,55 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
         </div>
 
         <div className="grid" style={{ alignContent: 'start' }}>
+          {(caseRecord.stage === 'decision-received' || caseRecord.stage === 'closed' || caseRecord.decisionStatus) && (
+            <div className="card decision-card">
+              <h3 style={{ marginTop: 0 }}>החלטת המשרד</h3>
+              <div className="decision-row">
+                <span className="muted" style={{ fontSize: 13 }}>מה התקבל?</span>
+                <div className="language-switch">
+                  <button
+                    type="button"
+                    className={`language-option ${caseRecord.decisionStatus === 'approved' ? 'active' : ''}`}
+                    onClick={() => setDecision({ decisionStatus: 'approved', investigationOutcome: '' })}
+                  >
+                    ✓ אושר
+                  </button>
+                  <button
+                    type="button"
+                    className={`language-option ${caseRecord.decisionStatus === 'investigation' ? 'active' : ''}`}
+                    onClick={() => setDecision({ decisionStatus: 'investigation' })}
+                  >
+                    🔍 חקירה
+                  </button>
+                </div>
+              </div>
+              {caseRecord.decisionStatus === 'investigation' && (
+                <div className="decision-row">
+                  <span className="muted" style={{ fontSize: 13 }}>תוצאת החקירה:</span>
+                  <div className="language-switch">
+                    <button
+                      type="button"
+                      className={`language-option ${caseRecord.investigationOutcome === 'approved' ? 'active' : ''}`}
+                      onClick={() => setDecision({ investigationOutcome: 'approved' })}
+                    >
+                      ✓ אושר
+                    </button>
+                    <button
+                      type="button"
+                      className={`language-option outcome-rejected ${caseRecord.investigationOutcome === 'rejected' ? 'active' : ''}`}
+                      onClick={() => setDecision({ investigationOutcome: 'rejected' })}
+                    >
+                      ✕ נדחה
+                    </button>
+                  </div>
+                </div>
+              )}
+              {caseRecord.investigationOutcome === 'rejected' && (
+                <p className="form-error" style={{ marginBottom: 0 }}>הבקשה נדחתה לאחר חקירה.</p>
+              )}
+            </div>
+          )}
+
           <div className="card">
             <div className="section-heading">
               <h3 style={{ margin: 0 }}>פרטי התיק</h3>

@@ -3,7 +3,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {
   countMissingItems,
+  DECISION_LABELS,
   documentTemplates,
+  INVESTIGATION_OUTCOME_LABELS,
+  LEGACY_STAGE_MAP,
   officeDisplayName,
   OPEN_STAGES,
   STAGE_LABELS,
@@ -14,12 +17,17 @@ import {
   type ChecklistItem,
   type ChecklistStatus,
   type ClientRecord,
+  type DecisionStatus,
   type DocumentRecord,
   type GovernmentOffice,
+  type InvestigationOutcome,
   type OperatingCompany,
   type PaymentMethod,
   type PaymentRecord,
   type PaymentStatus,
+  type ReminderChannel,
+  type TaskPriority,
+  type TaskRecord,
   type WorkerRecord,
 } from '@/data/domain';
 import { env } from '@/lib/env';
@@ -191,7 +199,13 @@ export function updateClient(clientId: string, input: Partial<CreateClientInput>
 // ── Cases ────────────────────────────────────────────────────────────────────
 
 export function listCases(): CaseRecord[] {
-  return readJson<CaseRecord[]>(dbFile('cases'), []);
+  const cases = readJson<CaseRecord[]>(dbFile('cases'), []);
+  // Normalize stage codes written by older versions (read-time migration).
+  for (const caseRecord of cases) {
+    const mapped = LEGACY_STAGE_MAP[caseRecord.stage as string];
+    if (mapped) caseRecord.stage = mapped;
+  }
+  return cases;
 }
 
 export function getCase(caseId: string) {
@@ -297,6 +311,9 @@ export interface UpdateCaseInput {
   caseKind?: CaseKind;
   troubleFlag?: boolean;
   troubleNote?: string;
+  decisionStatus?: DecisionStatus;
+  /** Empty string clears the outcome (e.g. when switching decision back to approved). */
+  investigationOutcome?: InvestigationOutcome | '';
   /** Worker id to assign the case to; empty string clears the assignment. */
   assignedTo?: string;
 }
@@ -315,6 +332,13 @@ export function updateCase(caseId: string, input: UpdateCaseInput) {
   };
   if (input.assignedTo !== undefined) {
     updated.assignedTo = input.assignedTo.trim() || undefined;
+  }
+  if (input.investigationOutcome === '') {
+    updated.investigationOutcome = undefined;
+  }
+  // A direct approval clears any previous investigation outcome.
+  if (input.decisionStatus === 'approved') {
+    updated.investigationOutcome = undefined;
   }
 
   if (input.stage && input.stage !== previousStage) {
@@ -358,6 +382,29 @@ export function updateCase(caseId: string, input: UpdateCaseInput) {
       clientId: updated.clientId,
       caseId,
       summary: worker ? `התיק "${updated.title}" שויך לעובד ${worker.name}` : `בוטל שיוך העובד מהתיק "${updated.title}"`,
+    });
+  }
+
+  const decisionChanged =
+    (input.decisionStatus !== undefined && input.decisionStatus !== current.decisionStatus) ||
+    (input.investigationOutcome !== undefined && (input.investigationOutcome || undefined) !== current.investigationOutcome);
+  if (decisionChanged) {
+    const parts = [
+      updated.decisionStatus ? `החלטה: ${DECISION_LABELS[updated.decisionStatus]}` : '',
+      updated.investigationOutcome ? `תוצאת חקירה: ${INVESTIGATION_OUTCOME_LABELS[updated.investigationOutcome]}` : '',
+    ].filter(Boolean);
+    logActivity({
+      type: 'case-decision',
+      clientId: updated.clientId,
+      caseId,
+      summary: `עודכנה החלטה בתיק "${updated.title}" — ${parts.join(', ') || 'נוקתה'}`,
+    });
+    void fireEvent('case-decision', {
+      caseId,
+      clientId: updated.clientId,
+      title: updated.title,
+      decisionStatus: updated.decisionStatus || '',
+      investigationOutcome: updated.investigationOutcome || '',
     });
   }
 
@@ -673,6 +720,39 @@ export function createPayment(input: CreatePaymentInput): PaymentRecord | undefi
   return record;
 }
 
+export function updatePayment(
+  paymentId: string,
+  input: { amount?: number; method?: PaymentMethod; paidAt?: string; note?: string; caseId?: string | null },
+) {
+  const payments = listPayments();
+  const index = payments.findIndex((p) => p.id === paymentId);
+  if (index === -1) return undefined;
+  const record = payments[index];
+  const previousAmount = record.amount;
+
+  if (input.amount !== undefined) {
+    if (!Number.isFinite(input.amount) || input.amount <= 0) return undefined;
+    record.amount = Math.round(input.amount * 100) / 100;
+  }
+  if (input.method) record.method = input.method;
+  if (input.paidAt) record.paidAt = input.paidAt;
+  if (input.note !== undefined) record.note = input.note.trim() || undefined;
+  if (input.caseId !== undefined) record.caseId = input.caseId || undefined;
+
+  payments[index] = record;
+  writeJson(dbFile('payments'), payments);
+  logActivity({
+    type: 'payment-updated',
+    clientId: record.clientId,
+    caseId: record.caseId,
+    summary:
+      input.amount !== undefined && input.amount !== previousAmount
+        ? `עודכן תשלום ${record.id}: ₪${previousAmount.toLocaleString()} ← ₪${record.amount.toLocaleString()}`
+        : `עודכנו פרטי תשלום ${record.id}`,
+  });
+  return record;
+}
+
 export function deletePayment(paymentId: string) {
   const payments = listPayments();
   const record = payments.find((p) => p.id === paymentId);
@@ -762,7 +842,7 @@ export function getWorkerByEmail(email: string) {
   return listWorkers().find((w) => w.email.toLowerCase() === normalized);
 }
 
-export function createWorker(input: { name: string; email: string; passwordHash: string }): WorkerRecord | undefined {
+export function createWorker(input: { name: string; email: string; passwordHash: string; phone?: string }): WorkerRecord | undefined {
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
   if (!name || !email || !input.passwordHash) return undefined;
@@ -772,6 +852,7 @@ export function createWorker(input: { name: string; email: string; passwordHash:
     id: nextId('WRK', 'worker', 100),
     name,
     email,
+    phone: input.phone?.trim() || undefined,
     passwordHash: input.passwordHash,
     active: true,
     createdAt: nowIso(),
@@ -784,7 +865,7 @@ export function createWorker(input: { name: string; email: string; passwordHash:
   return record;
 }
 
-export function updateWorker(workerId: string, input: { name?: string; active?: boolean; passwordHash?: string }) {
+export function updateWorker(workerId: string, input: { name?: string; active?: boolean; passwordHash?: string; phone?: string }) {
   const workers = listWorkers();
   const index = workers.findIndex((w) => w.id === workerId);
   if (index === -1) return undefined;
@@ -792,6 +873,7 @@ export function updateWorker(workerId: string, input: { name?: string; active?: 
   if (input.name?.trim()) record.name = input.name.trim();
   if (input.active !== undefined) record.active = input.active;
   if (input.passwordHash) record.passwordHash = input.passwordHash;
+  if (input.phone !== undefined) record.phone = input.phone.trim() || undefined;
   record.updatedAt = nowIso();
   workers[index] = record;
   writeJson(dbFile('workers'), workers);
@@ -833,6 +915,190 @@ export function documentVisibleTo(doc: Pick<DocumentRecord, 'clientId'>, viewer:
   if (viewer.role === 'admin') return true;
   const client = getClient(doc.clientId);
   return Boolean(client && clientVisibleTo(client, viewer));
+}
+
+// ── Tasks & reminders ────────────────────────────────────────────────────────
+
+export function listTasks(): TaskRecord[] {
+  return readJson<TaskRecord[]>(dbFile('tasks'), []);
+}
+
+export function getTask(taskId: string) {
+  return listTasks().find((t) => t.id === taskId);
+}
+
+export function taskVisibleTo(task: Pick<TaskRecord, 'assigneeId' | 'createdBy'>, viewer: Viewer) {
+  if (viewer.role === 'admin') return true;
+  return task.assigneeId === viewer.workerId || task.createdBy === viewer.workerId;
+}
+
+export function listVisibleTasks(viewer: Viewer) {
+  const tasks = listTasks();
+  if (viewer.role === 'admin') return tasks;
+  return tasks.filter((t) => taskVisibleTo(t, viewer));
+}
+
+/** Contact details for a task assignee ('admin' or a worker id). */
+export function assigneeContact(assigneeId: string) {
+  if (assigneeId === 'admin') {
+    return { id: 'admin', name: 'מנהל', email: env.adminEmail, phone: env.adminPhone || '' };
+  }
+  const worker = getWorker(assigneeId);
+  if (!worker) return { id: assigneeId, name: assigneeId, email: '', phone: '' };
+  return { id: worker.id, name: worker.name, email: worker.email, phone: worker.phone || '' };
+}
+
+export interface CreateTaskInput {
+  title: string;
+  notes?: string;
+  dueAt?: string;
+  remindAt?: string;
+  reminderChannels?: ReminderChannel[];
+  priority?: TaskPriority;
+  assigneeId?: string;
+  clientId?: string;
+  caseId?: string;
+  createdBy: string;
+}
+
+export function createTask(input: CreateTaskInput): TaskRecord | undefined {
+  const title = input.title.trim();
+  if (!title) return undefined;
+
+  const record: TaskRecord = {
+    id: nextId('TASK', 'task'),
+    title,
+    notes: input.notes?.trim() || undefined,
+    dueAt: input.dueAt || undefined,
+    remindAt: input.remindAt || undefined,
+    reminderChannels: input.reminderChannels?.filter((c) => c === 'email' || c === 'whatsapp') ?? [],
+    priority: input.priority ?? 'normal',
+    assigneeId: input.assigneeId || 'admin',
+    clientId: input.clientId || undefined,
+    caseId: input.caseId || undefined,
+    status: 'open',
+    createdBy: input.createdBy,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+
+  const tasks = listTasks();
+  tasks.unshift(record);
+  writeJson(dbFile('tasks'), tasks);
+
+  const assignee = assigneeContact(record.assigneeId);
+  logActivity({
+    type: 'task-created',
+    clientId: record.clientId,
+    caseId: record.caseId,
+    summary: `נוצרה משימה: "${record.title}" (${assignee.name})`,
+  });
+  if (record.assigneeId !== record.createdBy) {
+    void fireEvent('task-assigned', {
+      taskId: record.id,
+      title: record.title,
+      notes: record.notes || '',
+      dueAt: record.dueAt || '',
+      priority: record.priority,
+      assigneeId: assignee.id,
+      assigneeName: assignee.name,
+      assigneeEmail: assignee.email,
+      assigneePhone: assignee.phone,
+      caseId: record.caseId || '',
+      clientId: record.clientId || '',
+    });
+  }
+  return record;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  notes?: string;
+  dueAt?: string | null;
+  remindAt?: string | null;
+  reminderChannels?: ReminderChannel[];
+  priority?: TaskPriority;
+  assigneeId?: string;
+  status?: 'open' | 'done';
+}
+
+export function updateTask(taskId: string, input: UpdateTaskInput) {
+  const tasks = listTasks();
+  const index = tasks.findIndex((t) => t.id === taskId);
+  if (index === -1) return undefined;
+  const record = tasks[index];
+
+  if (input.title?.trim()) record.title = input.title.trim();
+  if (input.notes !== undefined) record.notes = input.notes.trim() || undefined;
+  if (input.dueAt !== undefined) record.dueAt = input.dueAt || undefined;
+  if (input.remindAt !== undefined) {
+    record.remindAt = input.remindAt || undefined;
+    // Rescheduling a reminder re-arms it.
+    record.reminderSentAt = undefined;
+  }
+  if (input.reminderChannels) record.reminderChannels = input.reminderChannels;
+  if (input.priority) record.priority = input.priority;
+  if (input.assigneeId) record.assigneeId = input.assigneeId;
+  if (input.status && input.status !== record.status) {
+    record.status = input.status;
+    record.completedAt = input.status === 'done' ? nowIso() : undefined;
+    logActivity({
+      type: input.status === 'done' ? 'task-completed' : 'task-reopened',
+      clientId: record.clientId,
+      caseId: record.caseId,
+      summary: input.status === 'done' ? `הושלמה משימה: "${record.title}"` : `נפתחה מחדש משימה: "${record.title}"`,
+    });
+  }
+  record.updatedAt = nowIso();
+  tasks[index] = record;
+  writeJson(dbFile('tasks'), tasks);
+  return record;
+}
+
+export function deleteTask(taskId: string) {
+  const tasks = listTasks();
+  const record = tasks.find((t) => t.id === taskId);
+  if (!record) return false;
+  writeJson(dbFile('tasks'), tasks.filter((t) => t.id !== taskId));
+  return true;
+}
+
+/**
+ * Open tasks whose reminder time has arrived and was not sent yet.
+ * Used by the n8n polling workflow; with markSent the tasks are flagged so
+ * they are returned exactly once.
+ */
+export function listDueReminders(markSent: boolean) {
+  const tasks = listTasks();
+  const now = Date.now();
+  const due = tasks.filter(
+    (t) => t.status === 'open' && t.remindAt && !t.reminderSentAt && new Date(t.remindAt).getTime() <= now,
+  );
+  if (markSent && due.length) {
+    for (const task of due) task.reminderSentAt = nowIso();
+    writeJson(dbFile('tasks'), tasks);
+  }
+  return due.map((task) => {
+    const assignee = assigneeContact(task.assigneeId);
+    const client = task.clientId ? getClient(task.clientId) : undefined;
+    const caseRecord = task.caseId ? getCase(task.caseId) : undefined;
+    return {
+      taskId: task.id,
+      title: task.title,
+      notes: task.notes || '',
+      dueAt: task.dueAt || '',
+      remindAt: task.remindAt || '',
+      priority: task.priority,
+      channels: task.reminderChannels,
+      assigneeName: assignee.name,
+      assigneeEmail: assignee.email,
+      assigneePhone: assignee.phone,
+      clientName: client?.fullName || '',
+      caseTitle: caseRecord?.title || '',
+      caseId: task.caseId || '',
+      link: `${env.appBaseUrl}/tasks`,
+    };
+  });
 }
 
 // ── Settings (blank rent-contract template, etc.) ────────────────────────────

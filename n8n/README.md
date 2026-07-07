@@ -22,8 +22,11 @@ CasePoint שולח אירועים ל-n8n בכל פעולה משמעותית, ו-
 | `casepoint/client-created` | לקוח חדש נוצר |
 | `casepoint/case-created` | תיק חדש נפתח |
 | `casepoint/case-stage-changed` | שלב תיק השתנה (כולל פרטי לקוח, שלב קודם/חדש, מסמכים חסרים) |
+| `casepoint/case-trouble-flag` | תיק סומן כתקוע / הוסר הסימון |
+| `casepoint/case-decision` | עודכנה החלטה (אושר / חקירה / תוצאת חקירה) |
 | `casepoint/document-uploaded` | מסמך הועלה או נשמרה גרסה ערוכה |
 | `casepoint/payment-recorded` | תשלום נרשם |
+| `casepoint/task-assigned` | משימה הוקצתה לעובד (כולל אימייל וטלפון של האחראי) |
 | `casepoint/meeting-request` | בקשת פגישה שנשלחה דרך `POST /api/webhooks/n8n` |
 
 ## קריאת נתונים (n8n → CasePoint)
@@ -31,6 +34,7 @@ CasePoint שולח אירועים ל-n8n בכל פעולה משמעותית, ו-
 כל הקריאות עם הכותרת `x-casepoint-api-key: <CASEPOINT_API_TOKEN>`:
 
 - `GET /api/summary` — כל התיקים + סטטוס + כספים (מושלם לסנכרון לגיליון או סיכום יומי)
+- `GET /api/tasks/due?markSent=1` — תזכורות שהגיע זמנן (כל תזכורת מוחזרת פעם אחת בלבד; כולל אימייל/טלפון של האחראי וערוצי השליחה המבוקשים)
 - `GET /api/clients` — לקוחות
 - `GET /api/cases` — תיקים
 
@@ -43,6 +47,10 @@ CasePoint שולח אירועים ל-n8n בכל פעולה משמעותית, ו-
 | `03-meeting-request-google-calendar.json` | קביעת פגישה ביומן גוגל מאירוע meeting-request |
 | `04-missing-docs-weekly-reminder.json` | תזכורת שבועית ללקוחות עם מסמכים חסרים |
 | `05-payment-recorded-notification.json` | רישום כל תשלום בגיליון הכנסות |
+| `06-task-reminders.json` | **תזכורות משימות** — בדיקה כל 10 דקות ושליחה באימייל (Gmail) ו/או וואטסאפ (WhatsApp Business Cloud) לפי הערוצים שנבחרו במשימה |
+| `07-task-assigned-notification.json` | מייל אוטומטי לעובד כשמוקצית לו משימה |
 
-הוורקפלואים הם תבניות: אחרי הייבוא יש להחליף `REPLACE_WITH_SPREADSHEET_ID`,
-לחבר Credentials ולהתאים ניסוחים.
+הוורקפלואים הם תבניות: אחרי הייבוא יש להחליף `REPLACE_WITH_SPREADSHEET_ID` /
+`REPLACE_WITH_WHATSAPP_PHONE_NUMBER_ID`, לחבר Credentials (Gmail, Google Sheets,
+WhatsApp Business Cloud) ולהתאים ניסוחים. לתזכורות וואטסאפ יש להזין מספרי טלפון
+בפורמט בינלאומי (972...) אצל העובדים וב-`ADMIN_PHONE`.

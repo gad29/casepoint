@@ -6,7 +6,9 @@ import {
   officeDisplayName,
   type CaseKind,
   type CaseStage,
+  type DecisionStatus,
   type GovernmentOffice,
+  type InvestigationOutcome,
   type OperatingCompany,
 } from '@/data/domain';
 import {
@@ -84,6 +86,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     caseKind?: CaseKind;
     troubleFlag?: boolean;
     troubleNote?: string;
+    decisionStatus?: DecisionStatus;
+    investigationOutcome?: InvestigationOutcome | '';
     assignedTo?: string;
   };
   try {

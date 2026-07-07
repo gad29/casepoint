@@ -6,6 +6,7 @@ type WorkerRow = {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   active: boolean;
   openCases: number;
   createdAt: string;
@@ -14,7 +15,7 @@ type WorkerRow = {
 export default function WorkersPage() {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', phone: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -46,7 +47,7 @@ export default function WorkersPage() {
         setError(data.error || 'הוספת העובד נכשלה');
         return;
       }
-      setForm({ name: '', email: '', password: '' });
+      setForm({ name: '', email: '', password: '', phone: '' });
       reload();
     } catch {
       setError('שגיאת תקשורת');
@@ -120,7 +121,10 @@ export default function WorkersPage() {
               <tbody>
                 {workers.map((w) => (
                   <tr key={w.id} style={{ opacity: w.active ? 1 : 0.55 }}>
-                    <td><strong>{w.name}</strong></td>
+                    <td>
+                      <strong>{w.name}</strong>
+                      {w.phone && <span className="muted" style={{ display: 'block', fontSize: 11 }} dir="ltr">{w.phone}</span>}
+                    </td>
                     <td dir="ltr" style={{ textAlign: 'right' }}>{w.email}</td>
                     <td>{w.openCases}</td>
                     <td>
@@ -166,6 +170,16 @@ export default function WorkersPage() {
                 required
                 dir="ltr"
                 style={{ textAlign: 'right' }}
+              />
+            </div>
+            <div className="field">
+              <label>טלפון (לתזכורות וואטסאפ, פורמט בינלאומי: ...9725)</label>
+              <input
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                dir="ltr"
+                style={{ textAlign: 'right' }}
+                placeholder="972501234567"
               />
             </div>
             <div className="field">

@@ -1,7 +1,16 @@
 import Link from 'next/link';
-import { COMPANY_LABELS, countMissingItems, officeDisplayName, STAGE_LABELS, type CaseStage } from '@/data/domain';
+import {
+  COMPANY_LABELS,
+  countMissingItems,
+  officeDisplayName,
+  STAGE_LABELS,
+  TASK_PRIORITY_LABELS,
+  type CaseStage,
+  type TaskPriority,
+} from '@/data/domain';
 import { getCurrentSession } from '@/lib/admin-session';
 import {
+  assigneeContact,
   caseVisibleTo,
   getCaseFinance,
   getDashboardSummary,
@@ -9,6 +18,7 @@ import {
   listClients,
   listPayments,
   listVisibleCases,
+  listVisibleTasks,
 } from '@/lib/store';
 import { sessionToViewer } from '@/lib/viewer';
 
@@ -55,6 +65,16 @@ export default async function DashboardPage() {
     : [];
 
   const stageOrder = Object.keys(STAGE_LABELS) as CaseStage[];
+
+  const priorityOrder: Record<TaskPriority, number> = { urgent: 0, high: 1, normal: 2 };
+  const openTasks = listVisibleTasks(viewer)
+    .filter((t) => t.status === 'open')
+    .sort((a, b) => {
+      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) return priorityOrder[a.priority] - priorityOrder[b.priority];
+      return (a.dueAt || '9999').localeCompare(b.dueAt || '9999');
+    })
+    .slice(0, 6)
+    .map((t) => ({ ...t, assigneeName: assigneeContact(t.assigneeId).name }));
 
   return (
     <div>
@@ -147,6 +167,41 @@ export default async function DashboardPage() {
         </div>
 
         <div className="grid" style={{ alignContent: 'start' }}>
+          <div className="card">
+            <div className="section-heading">
+              <h3 style={{ margin: 0 }}>משימות פתוחות</h3>
+              <Link className="mini-link" href={'/tasks' as never}>לכל המשימות ←</Link>
+            </div>
+            {openTasks.length === 0 ? (
+              <p className="muted">אין משימות פתוחות. 🎉</p>
+            ) : (
+              openTasks.map((task) => {
+                const overdue = task.dueAt && new Date(task.dueAt).getTime() < Date.now();
+                return (
+                  <div key={task.id} className="task-row">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="task-title">
+                        {task.title}
+                        <span className={`priority-badge ${task.priority}`} style={{ marginInlineStart: 8 }}>
+                          {TASK_PRIORITY_LABELS[task.priority]}
+                        </span>
+                      </div>
+                      <div className="task-meta">
+                        {task.dueAt && (
+                          <span className={overdue ? 'task-overdue' : ''}>
+                            🗓 {new Date(task.dueAt).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            {overdue && ' · באיחור!'}
+                          </span>
+                        )}
+                        <span>👤 {task.assigneeName}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
           <div className="card">
             <div className="section-heading">
               <h3 style={{ margin: 0 }}>תיקים לפי שלב</h3>

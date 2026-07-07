@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { name?: string; email?: string; password?: string };
+  let body: { name?: string; email?: string; password?: string; phone?: string };
   try {
     body = await request.json();
   } catch {
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   const passwordHash = await bcrypt.hash(body.password, 10);
-  const record = createWorker({ name: body.name, email: body.email, passwordHash });
+  const record = createWorker({ name: body.name, email: body.email, passwordHash, phone: body.phone });
   if (!record) {
     return NextResponse.json({ ok: false, error: 'האימייל כבר קיים במערכת' }, { status: 400 });
   }

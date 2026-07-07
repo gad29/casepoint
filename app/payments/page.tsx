@@ -44,6 +44,9 @@ export default function PaymentsPage() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['id']>('all');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ amount: '', method: 'bank-transfer', paidAt: '', note: '' });
+  const [editError, setEditError] = useState('');
 
   function reload() {
     Promise.all([
@@ -81,8 +84,45 @@ export default function PaymentsPage() {
   }, [withFee, payments]);
 
   async function deletePayment(paymentId: string) {
-    if (!window.confirm('למחוק את התשלום?')) return;
+    if (!window.confirm('למחוק את התשלום? הסטטוס של התיק יתעדכן בהתאם (למשל חזרה ל"לא שולם").')) return;
     await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' });
+    reload();
+  }
+
+  function startEdit(payment: PaymentRow) {
+    setEditingId(payment.id);
+    setEditError('');
+    setEditForm({
+      amount: String(payment.amount),
+      method: payment.method,
+      paidAt: payment.paidAt.slice(0, 10),
+      note: payment.note || '',
+    });
+  }
+
+  async function saveEdit(paymentId: string) {
+    setEditError('');
+    const amount = Number(editForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setEditError('סכום חייב להיות חיובי — למחיקת התשלום השתמש בכפתור המחיקה');
+      return;
+    }
+    const res = await fetch(`/api/payments/${paymentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount,
+        method: editForm.method,
+        paidAt: editForm.paidAt ? new Date(editForm.paidAt).toISOString() : undefined,
+        note: editForm.note,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      setEditError(data.error || 'העדכון נכשל');
+      return;
+    }
+    setEditingId(null);
     reload();
   }
 
@@ -188,10 +228,60 @@ export default function PaymentsPage() {
               <tbody>
                 {payments.slice(0, 30).map((p) => {
                   const relatedCase = cases.find((c) => c.id === p.caseId);
+                  if (editingId === p.id) {
+                    return (
+                      <tr key={p.id} style={{ background: 'var(--panel)' }}>
+                        <td>
+                          <input
+                            type="date"
+                            value={editForm.paidAt}
+                            onChange={(e) => setEditForm({ ...editForm, paidAt: e.target.value })}
+                            style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', width: 130 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editForm.amount}
+                            onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                            style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', width: 90 }}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            value={editForm.method}
+                            onChange={(e) => setEditForm({ ...editForm, method: e.target.value })}
+                            style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)' }}
+                          >
+                            {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            placeholder="הערה"
+                            value={editForm.note}
+                            onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                            style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', width: '100%' }}
+                          />
+                          {editError && <span className="form-error" style={{ display: 'block', fontSize: 11 }}>{editError}</span>}
+                        </td>
+                        <td>
+                          <div className="doc-actions">
+                            <button type="button" className="doc-action-btn approve" onClick={() => saveEdit(p.id)}>✓ שמור</button>
+                            <button type="button" className="doc-action-btn" onClick={() => setEditingId(null)}>ביטול</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
                   return (
                     <tr key={p.id}>
                       <td>{formatDate(p.paidAt)}</td>
-                      <td><strong>{shekel(p.amount)}</strong></td>
+                      <td><strong>{shekel(p.amount)}</strong>{p.note && <span className="muted" style={{ display: 'block', fontSize: 11 }}>{p.note}</span>}</td>
                       <td>{PAYMENT_METHOD_LABELS[p.method]}</td>
                       <td>
                         {relatedCase ? (
@@ -203,7 +293,10 @@ export default function PaymentsPage() {
                         )}
                       </td>
                       <td>
-                        <button type="button" className="doc-action-btn reject" onClick={() => deletePayment(p.id)}>מחק</button>
+                        <div className="doc-actions">
+                          <button type="button" className="doc-action-btn" onClick={() => startEdit(p)}>עריכה</button>
+                          <button type="button" className="doc-action-btn reject" onClick={() => deletePayment(p.id)}>מחק</button>
+                        </div>
                       </td>
                     </tr>
                   );

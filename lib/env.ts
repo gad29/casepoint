@@ -3,6 +3,8 @@ export const env = {
   adminPassword: process.env.ADMIN_PASSWORD,
   adminPasswordHash: process.env.ADMIN_PASSWORD_HASH,
   adminEmail: process.env.ADMIN_EMAIL || 'admin@casepoint.local',
+  /** Admin phone for WhatsApp reminders (international format). */
+  adminPhone: process.env.ADMIN_PHONE || '',
   adminSessionSecret: process.env.ADMIN_SESSION_SECRET,
   adminSessionHours: process.env.ADMIN_SESSION_HOURS || '24',
 

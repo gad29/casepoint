@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { TaskAlerts } from '@/components/task-alerts';
 
 type AdminInfo = { email: string; name: string; role: 'admin' | 'worker'; authDisabled: boolean };
 
@@ -72,8 +73,18 @@ function SettingsIcon() {
   );
 }
 
+function CheckSquareIcon() {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 11 12 14 22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+
 const primaryNav = [
   { href: '/dashboard', label: 'לוח בקרה', Icon: HomeIcon, adminOnly: false },
+  { href: '/tasks', label: 'משימות ותזכורות', Icon: CheckSquareIcon, adminOnly: false },
   { href: '/clients', label: 'לקוחות', Icon: UsersIcon, adminOnly: false },
   { href: '/cases', label: 'תיקים', Icon: FolderIcon, adminOnly: false },
   { href: '/payments', label: 'תשלומים', Icon: CoinsIcon, adminOnly: true },
@@ -170,6 +181,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="content">{children}</main>
+      <TaskAlerts />
     </div>
   );
 }

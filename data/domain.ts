@@ -11,7 +11,8 @@ export type CaseStage =
   | 'new-client'
   | 'collecting-documents'
   | 'documents-review'
-  | 'ready-to-submit'
+  | 'ready-for-client'
+  | 'sent-to-client'
   | 'submitted'
   | 'in-government-review'
   | 'action-required'
@@ -22,7 +23,8 @@ export const CASE_STAGES: CaseStage[] = [
   'new-client',
   'collecting-documents',
   'documents-review',
-  'ready-to-submit',
+  'ready-for-client',
+  'sent-to-client',
   'submitted',
   'in-government-review',
   'action-required',
@@ -34,12 +36,31 @@ export const STAGE_LABELS: Record<CaseStage, string> = {
   'new-client': 'תיק חדש',
   'collecting-documents': 'איסוף מסמכים',
   'documents-review': 'בדיקת מסמכים',
-  'ready-to-submit': 'מוכן להגשה',
+  'ready-for-client': 'מוכן לשליחה ללקוח',
+  'sent-to-client': 'נשלח ללקוח לאחר תיקון',
   'submitted': 'הוגש למשרד',
   'in-government-review': 'בטיפול המשרד',
   'action-required': 'נדרשת השלמה',
   'decision-received': 'התקבלה החלטה',
   'closed': 'תיק סגור',
+};
+
+/** Legacy stage codes → current codes (kept for data written by older versions). */
+export const LEGACY_STAGE_MAP: Record<string, CaseStage> = {
+  'ready-to-submit': 'ready-for-client',
+};
+
+export type DecisionStatus = 'approved' | 'investigation';
+export type InvestigationOutcome = 'approved' | 'rejected';
+
+export const DECISION_LABELS: Record<DecisionStatus, string> = {
+  approved: 'אושר',
+  investigation: 'חקירה',
+};
+
+export const INVESTIGATION_OUTCOME_LABELS: Record<InvestigationOutcome, string> = {
+  approved: 'אושר',
+  rejected: 'נדחה',
 };
 
 /** Stages that count as an open, active case. */
@@ -138,6 +159,8 @@ export interface WorkerRecord {
   id: string;
   name: string;
   email: string;
+  /** Optional, for WhatsApp reminders (international format, e.g. 9725x…). */
+  phone?: string;
   passwordHash: string;
   active: boolean;
   createdAt: string;
@@ -172,7 +195,12 @@ export interface CaseRecord {
   referenceNumber?: string;
   nextAction?: string;
   notes?: string;
+  /** Free-text decision summary. */
   decision?: string;
+  /** Structured decision: approved directly, or sent to investigation. */
+  decisionStatus?: DecisionStatus;
+  /** Outcome when decisionStatus === 'investigation'. */
+  investigationOutcome?: InvestigationOutcome;
   openedAt: string;
   submittedAt?: string;
   decisionAt?: string;
@@ -235,6 +263,46 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   partial: 'שולם חלקית',
   paid: 'שולם',
 };
+
+// ── Tasks & reminders ────────────────────────────────────────────────────────
+
+export type TaskPriority = 'normal' | 'high' | 'urgent';
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  normal: 'רגיל',
+  high: 'חשוב',
+  urgent: 'דחוף',
+};
+
+export type ReminderChannel = 'email' | 'whatsapp';
+
+export const REMINDER_CHANNEL_LABELS: Record<ReminderChannel, string> = {
+  email: 'אימייל',
+  whatsapp: 'וואטסאפ',
+};
+
+export interface TaskRecord {
+  id: string;
+  title: string;
+  notes?: string;
+  /** When the task is due (ISO datetime). */
+  dueAt?: string;
+  /** When to send the reminder (ISO datetime). */
+  remindAt?: string;
+  reminderChannels: ReminderChannel[];
+  /** Set once the reminder was handed to n8n (prevents double sends). */
+  reminderSentAt?: string;
+  priority: TaskPriority;
+  /** 'admin' or a worker id. */
+  assigneeId: string;
+  clientId?: string;
+  caseId?: string;
+  status: 'open' | 'done';
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
 
 export interface ActivityRecord {
   id: string;
