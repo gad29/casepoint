@@ -32,6 +32,8 @@ type ClientDetail = {
     officeOther?: string;
     missingItems: number;
     troubleFlag?: boolean;
+    assignedToName?: string;
+    openedByName?: string;
     finance: { fee: number; paid: number; balance: number; status: 'paid' | 'partial' | 'unpaid' };
   }>;
   documents: DocumentItem[];
@@ -192,6 +194,7 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
               <span className="cli-stage">{STAGE_LABELS[c.stage]}</span>
               <span className="cli-meta">
                 <span>{c.officeName}</span>
+                {(c.assignedToName || c.openedByName) && <span>· 👤 {c.assignedToName || c.openedByName}</span>}
                 {c.missingItems > 0 && <span className="cli-missing">· {c.missingItems} מסמכים חסרים</span>}
                 <span>· {PAYMENT_STATUS_LABELS[c.finance.status]}{c.finance.balance > 0 && ` (יתרה ${shekel(c.finance.balance)})`}</span>
               </span>

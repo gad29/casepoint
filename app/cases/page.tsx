@@ -12,9 +12,12 @@ import {
   OFFICE_LABELS,
   PAYMENT_STATUS_LABELS,
   STAGE_LABELS,
+  isUnderInvestigation,
   type CaseKind,
   type CaseStage,
+  type DecisionStatus,
   type GovernmentOffice,
+  type InvestigationOutcome,
   type OperatingCompany,
 } from '@/data/domain';
 
@@ -32,6 +35,8 @@ type CaseRow = {
   company?: OperatingCompany;
   caseKind?: CaseKind;
   troubleFlag?: boolean;
+  decisionStatus?: DecisionStatus;
+  investigationOutcome?: InvestigationOutcome;
   openedByName?: string;
   assignedToName?: string;
   finance: { fee: number; paid: number; balance: number; status: 'paid' | 'partial' | 'unpaid' };
@@ -258,7 +263,7 @@ function KanbanBoard({ cases, onMove }: { cases: CaseRow[]; onMove: (caseId: str
               {columnCases.map((c) => (
                 <div
                   key={c.id}
-                  className={`kanban-card ${c.troubleFlag ? 'trouble' : ''}`}
+                  className={`kanban-card ${c.troubleFlag || isUnderInvestigation(c) ? 'trouble' : ''}`}
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData('text/case-id', c.id)}
                   onClick={() => router.push(`/cases/${c.id}` as never)}
@@ -266,6 +271,7 @@ function KanbanBoard({ cases, onMove }: { cases: CaseRow[]; onMove: (caseId: str
                 >
                   <div className="kanban-card-title">
                     {c.troubleFlag && '🚩 '}
+                    {isUnderInvestigation(c) && '🔍 '}
                     {c.clientName}
                   </div>
                   <div className="kanban-card-sub">
@@ -273,6 +279,11 @@ function KanbanBoard({ cases, onMove }: { cases: CaseRow[]; onMove: (caseId: str
                     {c.company && c.company !== 'none' && <span>· {COMPANY_LABELS[c.company]}</span>}
                     {c.missingItems > 0 && <span className="cli-missing">· {c.missingItems} חסרים</span>}
                   </div>
+                  {(c.assignedToName || c.openedByName) && (
+                    <div className="kanban-card-sub">
+                      <span className="kanban-worker">👤 {c.assignedToName || c.openedByName}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -404,9 +415,10 @@ function CasesPageInner() {
       ) : (
         <div className="office-case-list">
           {filtered.map((c) => (
-            <Link key={c.id} className={`case-list-item ${c.troubleFlag ? 'case-trouble' : ''}`} href={`/cases/${c.id}` as never}>
+            <Link key={c.id} className={`case-list-item ${c.troubleFlag || isUnderInvestigation(c) ? 'case-trouble' : ''}`} href={`/cases/${c.id}` as never}>
               <span className="cli-name">
                 {c.troubleFlag && '🚩 '}
+                {isUnderInvestigation(c) && '🔍 '}
                 {c.clientName} · {c.title}
                 {c.caseKind === 'renewal' && <span className="kind-badge">חידוש</span>}
               </span>

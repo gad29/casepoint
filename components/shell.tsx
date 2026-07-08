@@ -101,6 +101,12 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [admin, setAdmin] = useState<AdminInfo | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close the drawer whenever navigation happens.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -127,7 +133,8 @@ export function AdminFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="shell" dir="rtl">
-      <aside className="sidebar sidebar-flex">
+      {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
+      <aside className={`sidebar sidebar-flex ${mobileOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <span className="sidebar-brand-mark">C</span>
           <div>
@@ -182,7 +189,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <div className="shell-main">
-        <Topbar userName={admin?.name || admin?.email || 'מנהל'} />
+        <Topbar userName={admin?.name || admin?.email || 'מנהל'} onMenuClick={() => setMobileOpen((v) => !v)} />
         <main className="content">{children}</main>
       </div>
       <TaskAlerts />

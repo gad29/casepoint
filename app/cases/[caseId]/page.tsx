@@ -15,6 +15,7 @@ import {
   PAYMENT_STATUS_LABELS,
   STAGE_LABELS,
   documentTemplates,
+  isUnderInvestigation,
   type CaseKind,
   type CaseStage,
   type ChecklistStatus,
@@ -46,6 +47,8 @@ type CaseDetail = {
     troubleNote?: string;
     openedBy?: string;
     assignedTo?: string;
+    openedByName?: string;
+    assignedToName?: string;
     openedAt: string;
     submittedAt?: string;
     closedAt?: string;
@@ -112,6 +115,53 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
   const caseRecord = data.case;
   const stageIndex = CASE_STAGES.indexOf(caseRecord.stage);
+  const underInvestigation = isUnderInvestigation(caseRecord);
+
+  async function officeResponse(kind: 'approved' | 'more-info' | 'investigation') {
+    if (kind === 'approved') {
+      if (!window.confirm('המשרד אישר את הבקשה? התיק יעבור לשלב "ממתין לתשלום".')) return;
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: 'awaiting-payment', decisionStatus: 'approved', investigationOutcome: '' }),
+      });
+    } else if (kind === 'more-info') {
+      if (!window.confirm('המשרד ביקש השלמה נוספת?')) return;
+      const note = window.prompt('מה נדרש להשלים?') ?? '';
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nextAction: note || 'נדרשת השלמה נוספת מהמשרד' }),
+      });
+    } else {
+      if (!window.confirm('התיק הועבר לחקירה? התיק יסומן באדום עד לסיום החקירה.')) return;
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decisionStatus: 'investigation', investigationOutcome: '' }),
+      });
+    }
+    reload();
+  }
+
+  async function concludeInvestigation(outcome: 'approved' | 'rejected') {
+    if (outcome === 'approved') {
+      if (!window.confirm('החקירה הסתיימה באישור? התיק יעבור ל"ממתין לתשלום".')) return;
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ investigationOutcome: 'approved', stage: 'awaiting-payment' }),
+      });
+    } else {
+      if (!window.confirm('הבקשה נדחתה? התיק יעבור ל"התקבלה החלטה" עם סטטוס נדחה.')) return;
+      await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ investigationOutcome: 'rejected', stage: 'decision-received' }),
+      });
+    }
+    reload();
+  }
 
   function pickFilesFor(code: string) {
     uploadCodeRef.current = code;
@@ -308,7 +358,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               🚩 סמן כתקוע
             </button>
           )}
-          {data.canAssign && (
+          {data.canAssign ? (
             <select
               className="assign-select"
               value={caseRecord.assignedTo || ''}
@@ -320,12 +370,16 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                 <option key={w.id} value={w.id}>👤 {w.name}</option>
               ))}
             </select>
+          ) : (
+            (caseRecord.assignedToName || caseRecord.openedByName) && (
+              <span className="badge">👤 {caseRecord.assignedToName || caseRecord.openedByName}</span>
+            )
           )}
           {caseRecord.missingItems > 0 && <span className="badge danger">{caseRecord.missingItems} מסמכים חסרים</span>}
           {caseRecord.decisionStatus && (
             <span
               className={`badge ${
-                caseRecord.investigationOutcome === 'rejected'
+                caseRecord.investigationOutcome === 'rejected' || underInvestigation
                   ? 'danger'
                   : caseRecord.decisionStatus === 'approved' || caseRecord.investigationOutcome === 'approved'
                     ? 'good'
@@ -333,7 +387,9 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               }`}
             >
               {caseRecord.decisionStatus === 'investigation'
-                ? `חקירה${caseRecord.investigationOutcome ? ` → ${INVESTIGATION_OUTCOME_LABELS[caseRecord.investigationOutcome]}` : ''}`
+                ? underInvestigation
+                  ? '🔍 בחקירה'
+                  : `חקירה → ${INVESTIGATION_OUTCOME_LABELS[caseRecord.investigationOutcome!]}`
                 : DECISION_LABELS[caseRecord.decisionStatus]}
             </span>
           )}
@@ -482,7 +538,42 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
         </div>
 
         <div className="grid" style={{ alignContent: 'start' }}>
-          {(caseRecord.stage === 'decision-received' || caseRecord.stage === 'closed' || caseRecord.decisionStatus) && (
+          {underInvestigation && (
+            <div className="card investigation-card">
+              <h3 style={{ marginTop: 0, color: 'var(--danger)' }}>🔍 התיק בחקירה</h3>
+              <p className="muted" style={{ fontSize: 13, marginTop: -6 }}>
+                ממתין למסקנת החקירה. עדכן כאן ברגע שמתקבלת תשובה:
+              </p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" className="button button-compact" onClick={() => concludeInvestigation('approved')}>
+                  ✓ אושר — ממתין לתשלום
+                </button>
+                <button type="button" className="button button-secondary button-compact trouble-toggle" onClick={() => concludeInvestigation('rejected')}>
+                  ✕ נדחה
+                </button>
+              </div>
+            </div>
+          )}
+
+          {caseRecord.stage === 'action-required' && !underInvestigation && (
+            <div className="card decision-card">
+              <h3 style={{ marginTop: 0 }}>תגובת המשרד</h3>
+              <p className="muted" style={{ fontSize: 13, marginTop: -6 }}>מה המשרד השיב?</p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" className="button button-compact" onClick={() => officeResponse('approved')}>
+                  ✓ אושר — ממתין לתשלום
+                </button>
+                <button type="button" className="button button-secondary button-compact" onClick={() => officeResponse('more-info')}>
+                  📄 נדרשת השלמה נוספת
+                </button>
+                <button type="button" className="button button-secondary button-compact trouble-toggle" onClick={() => officeResponse('investigation')}>
+                  🔍 חקירה
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(caseRecord.stage === 'decision-received' || caseRecord.stage === 'closed' || caseRecord.decisionStatus) && !underInvestigation && caseRecord.stage !== 'action-required' && (
             <div className="card decision-card">
               <h3 style={{ marginTop: 0 }}>החלטת המשרד</h3>
               <div className="decision-row">
@@ -540,6 +631,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
             </div>
             {!editingDetails ? (
               <div className="review-grid">
+                <div className="review-row">
+                  <span className="muted">עובד מטפל</span>
+                  <strong>{caseRecord.assignedToName || caseRecord.openedByName || 'מנהל'}</strong>
+                </div>
                 <div className="review-row"><span className="muted">חברה מטפלת</span><strong>{COMPANY_LABELS[caseRecord.company || 'none']}</strong></div>
                 <div className="review-row"><span className="muted">סוג התיק</span><strong>{CASE_KIND_LABELS[caseRecord.caseKind || 'new']}</strong></div>
                 <div className="review-row"><span className="muted">שכר טרחה</span><strong>{shekel(caseRecord.fee)}</strong></div>

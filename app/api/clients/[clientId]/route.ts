@@ -11,6 +11,7 @@ import {
   listClientDocuments,
   listClientPayments,
   listPayments,
+  listWorkers,
   updateClient,
 } from '@/lib/store';
 import { getViewer } from '@/lib/viewer';
@@ -28,12 +29,16 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   const payments = listPayments();
+  const workers = listWorkers();
+  const workerName = (id?: string) => (id && id !== 'admin' ? workers.find((w) => w.id === id)?.name || '' : '');
   const cases = listClientCases(clientId)
     .filter((c) => caseVisibleTo(c, auth.viewer))
     .map((c) => ({
       ...c,
       missingItems: countMissingItems(c),
       finance: getCaseFinance(c, payments),
+      assignedToName: workerName(c.assignedTo),
+      openedByName: workerName(c.openedBy),
     }));
 
   const isAdmin = auth.viewer.role === 'admin';

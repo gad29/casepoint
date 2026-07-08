@@ -40,6 +40,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const isAdmin = auth.viewer.role === 'admin';
   const workers = listWorkers().map(({ passwordHash: _hash, ...worker }) => worker);
   const client = getClient(caseRecord.clientId);
+  const workerName = (id?: string) => (id && id !== 'admin' ? workers.find((w) => w.id === id)?.name || '' : '');
   return NextResponse.json({
     ok: true,
     data: {
@@ -48,6 +49,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
         officeName: officeDisplayName(caseRecord),
         missingItems: countMissingItems(caseRecord),
         finance: getCaseFinance(caseRecord),
+        assignedToName: workerName(caseRecord.assignedTo),
+        openedByName: workerName(caseRecord.openedBy),
       },
       client,
       documents: listCaseDocuments(caseId),

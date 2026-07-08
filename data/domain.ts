@@ -17,6 +17,7 @@ export type CaseStage =
   | 'in-government-review'
   | 'action-required'
   | 'decision-received'
+  | 'awaiting-payment'
   | 'closed';
 
 export const CASE_STAGES: CaseStage[] = [
@@ -29,6 +30,7 @@ export const CASE_STAGES: CaseStage[] = [
   'in-government-review',
   'action-required',
   'decision-received',
+  'awaiting-payment',
   'closed',
 ];
 
@@ -42,8 +44,17 @@ export const STAGE_LABELS: Record<CaseStage, string> = {
   'in-government-review': 'בטיפול המשרד',
   'action-required': 'נדרשת השלמה',
   'decision-received': 'התקבלה החלטה',
+  'awaiting-payment': 'ממתין לתשלום',
   'closed': 'תיק סגור',
 };
+
+/** Case is in an open investigation (red state) until an outcome is set. */
+export function isUnderInvestigation(caseRecord: {
+  decisionStatus?: DecisionStatus;
+  investigationOutcome?: InvestigationOutcome;
+}) {
+  return caseRecord.decisionStatus === 'investigation' && !caseRecord.investigationOutcome;
+}
 
 /** Legacy stage codes → current codes (kept for data written by older versions). */
 export const LEGACY_STAGE_MAP: Record<string, CaseStage> = {

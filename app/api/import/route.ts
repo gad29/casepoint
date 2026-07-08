@@ -51,6 +51,7 @@ function resolveStage(raw?: string): CaseStage {
     if (value === label) return stage as CaseStage;
   }
   if (value.includes('סגור') || value.includes('הסתיים')) return 'closed';
+  if (value.includes('ממתין לתשלום') || value.includes('אושר')) return 'awaiting-payment';
   if (value.includes('הוגש')) return 'submitted';
   if (value.includes('חסר') || value.includes('השלמ')) return 'action-required';
   return 'collecting-documents';

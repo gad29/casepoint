@@ -22,6 +22,7 @@ import {
 } from '@/lib/store';
 import { sessionToViewer } from '@/lib/viewer';
 import { AnimatedNumber, CollectionDonut } from '@/components/animated-number';
+import { TeamOverview } from '@/components/team-overview';
 
 export const dynamic = 'force-dynamic';
 
@@ -176,6 +177,8 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
+
+      {isAdmin && <TeamOverview />}
 
       <div className="grid cols-2">
         <div className="card">
