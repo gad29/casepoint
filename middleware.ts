@@ -5,8 +5,9 @@ import { env } from '@/lib/env';
 
 /** Paths that stay reachable without a session. */
 function isPublicPath(pathname: string) {
-  if (pathname === '/login') return true;
+  if (pathname === '/login' || pathname === '/forgot') return true;
   if (pathname === '/api/auth/login' || pathname === '/api/auth/me') return true;
+  if (pathname === '/api/auth/forgot' || pathname === '/api/auth/reset') return true;
   return false;
 }
 
@@ -22,6 +23,7 @@ function isAdminOnlyPath(pathname: string) {
     pathname === '/connections' ||
     pathname.startsWith('/api/payments') ||
     pathname.startsWith('/api/workers') ||
+    pathname.startsWith('/api/admins') ||
     pathname.startsWith('/api/settings') ||
     pathname.startsWith('/api/import') ||
     pathname.startsWith('/api/summary')

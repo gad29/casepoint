@@ -11,6 +11,7 @@ import {
   OPEN_STAGES,
   STAGE_LABELS,
   type ActivityRecord,
+  type AdminRecord,
   type CaseKind,
   type CaseRecord,
   type CaseStage,
@@ -881,6 +882,162 @@ export function updateWorker(workerId: string, input: { name?: string; active?: 
     logActivity({ type: 'worker-updated', summary: `עובד ${record.name} ${input.active ? 'הופעל' : 'הושבת'}` });
   }
   return record;
+}
+
+// ── Admin accounts (additional admins beyond the root .env admin) ───────────
+
+export function listAdmins(): AdminRecord[] {
+  return readJson<AdminRecord[]>(dbFile('admins'), []);
+}
+
+export function getAdmin(adminId: string) {
+  return listAdmins().find((a) => a.id === adminId);
+}
+
+export function getAdminByEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  return listAdmins().find((a) => a.email.toLowerCase() === normalized);
+}
+
+export function createAdmin(input: { name: string; email: string; passwordHash: string; phone?: string }): AdminRecord | undefined {
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  if (!name || !email || !input.passwordHash) return undefined;
+  // Emails must be unique across admins and workers (both log in with email).
+  if (getAdminByEmail(email) || getWorkerByEmail(email)) return undefined;
+
+  const record: AdminRecord = {
+    id: nextId('ADM', 'admin', 10),
+    name,
+    email,
+    phone: input.phone?.trim() || undefined,
+    passwordHash: input.passwordHash,
+    active: true,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  const admins = listAdmins();
+  admins.unshift(record);
+  writeJson(dbFile('admins'), admins);
+  logActivity({ type: 'admin-created', summary: `נוסף מנהל נוסף: ${name} (${email})` });
+  return record;
+}
+
+export function updateAdmin(adminId: string, input: { name?: string; active?: boolean; passwordHash?: string; phone?: string }) {
+  const admins = listAdmins();
+  const index = admins.findIndex((a) => a.id === adminId);
+  if (index === -1) return undefined;
+  const record = admins[index];
+  if (input.name?.trim()) record.name = input.name.trim();
+  if (input.active !== undefined) record.active = input.active;
+  if (input.passwordHash) record.passwordHash = input.passwordHash;
+  if (input.phone !== undefined) record.phone = input.phone.trim() || undefined;
+  record.updatedAt = nowIso();
+  admins[index] = record;
+  writeJson(dbFile('admins'), admins);
+  if (input.active !== undefined) {
+    logActivity({ type: 'admin-updated', summary: `מנהל ${record.name} ${input.active ? 'הופעל' : 'הושבת'}` });
+  }
+  return record;
+}
+
+// ── Password reset codes (delivered via n8n: email / SMS / WhatsApp) ─────────
+
+interface ResetRecord {
+  id: string;
+  accountType: 'admin' | 'worker';
+  accountId: string;
+  email: string;
+  codeHash: string;
+  expiresAt: string;
+  attempts: number;
+  createdAt: string;
+}
+
+const RESET_TTL_MS = 15 * 60 * 1000;
+const RESET_COOLDOWN_MS = 60 * 1000;
+const RESET_MAX_ATTEMPTS = 5;
+
+function hashResetCode(code: string) {
+  return crypto.createHash('sha256').update(`casepoint-reset:${code}`).digest('hex');
+}
+
+function readResets(): ResetRecord[] {
+  const now = Date.now();
+  return readJson<ResetRecord[]>(dbFile('resets'), []).filter((r) => new Date(r.expiresAt).getTime() > now);
+}
+
+/**
+ * Creates a reset code for the account behind `email` (admin or worker) and
+ * fires the casepoint/password-reset n8n event with the requested channel.
+ * Always behaves the same externally so emails can't be enumerated.
+ */
+export async function requestPasswordReset(email: string, channel: 'email' | 'sms' | 'whatsapp') {
+  const normalized = email.trim().toLowerCase();
+  const admin = getAdminByEmail(normalized);
+  const worker = admin ? undefined : getWorkerByEmail(normalized);
+  const account = admin ?? worker;
+  if (!account || !account.active) return { ok: true, sent: false } as const;
+
+  const resets = readResets();
+  const recent = resets.find(
+    (r) => r.email === normalized && Date.now() - new Date(r.createdAt).getTime() < RESET_COOLDOWN_MS,
+  );
+  if (recent) return { ok: true, sent: false } as const;
+
+  const code = String(crypto.randomInt(100000, 1000000));
+  const record: ResetRecord = {
+    id: crypto.randomUUID(),
+    accountType: admin ? 'admin' : 'worker',
+    accountId: account.id,
+    email: normalized,
+    codeHash: hashResetCode(code),
+    expiresAt: new Date(Date.now() + RESET_TTL_MS).toISOString(),
+    attempts: 0,
+    createdAt: nowIso(),
+  };
+  // One active reset per email.
+  writeJson(dbFile('resets'), [...resets.filter((r) => r.email !== normalized), record]);
+
+  logActivity({ type: 'password-reset-requested', summary: `התבקש איפוס סיסמה עבור ${account.name}` });
+  await fireEvent('password-reset', {
+    channel,
+    code,
+    name: account.name,
+    email: account.email,
+    phone: account.phone || '',
+    expiresMinutes: 15,
+  });
+  return { ok: true, sent: true } as const;
+}
+
+/** Verifies the code and sets the new password hash. Consumes the reset on success. */
+export function completePasswordReset(email: string, code: string, newPasswordHash: string) {
+  const normalized = email.trim().toLowerCase();
+  const resets = readResets();
+  const record = resets.find((r) => r.email === normalized);
+  if (!record) return { ok: false, error: 'קוד לא תקין או שפג תוקפו' } as const;
+
+  if (record.attempts >= RESET_MAX_ATTEMPTS) {
+    writeJson(dbFile('resets'), resets.filter((r) => r.id !== record.id));
+    return { ok: false, error: 'יותר מדי ניסיונות — בקש קוד חדש' } as const;
+  }
+
+  if (record.codeHash !== hashResetCode(code.trim())) {
+    record.attempts += 1;
+    writeJson(dbFile('resets'), resets);
+    return { ok: false, error: 'קוד שגוי' } as const;
+  }
+
+  const updated =
+    record.accountType === 'admin'
+      ? updateAdmin(record.accountId, { passwordHash: newPasswordHash })
+      : updateWorker(record.accountId, { passwordHash: newPasswordHash });
+  writeJson(dbFile('resets'), resets.filter((r) => r.id !== record.id));
+  if (!updated) return { ok: false, error: 'החשבון לא נמצא' } as const;
+
+  logActivity({ type: 'password-reset-completed', summary: `אופסה סיסמה עבור ${updated.name}` });
+  return { ok: true } as const;
 }
 
 // ── Session-based visibility ─────────────────────────────────────────────────

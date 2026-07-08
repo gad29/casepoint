@@ -11,6 +11,7 @@ const EVENTS = [
   { path: 'casepoint/document-uploaded', description: 'מסמך הועלה — גיבוי לדרייב, עדכון סטטוס' },
   { path: 'casepoint/payment-recorded', description: 'תשלום נרשם — הפקת קבלה, עדכון גיליון הכנסות' },
   { path: 'casepoint/task-assigned', description: 'משימה הוקצתה לעובד — מייל אוטומטי לעובד' },
+  { path: 'casepoint/password-reset', description: 'קוד איפוס סיסמה — נשלח באימייל / SMS / וואטסאפ לפי בחירת המשתמש' },
   { path: 'casepoint/meeting-request', description: 'בקשת פגישה (נשלח ידנית/מסוכן AI) — קביעת פגישה ביומן גוגל' },
   { path: 'casepoint/daily-summary', description: 'סיכום יומי (מופעל מתוזמן ב-n8n שקורא מ-GET /api/summary)' },
 ];

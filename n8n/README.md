@@ -27,6 +27,7 @@ CasePoint שולח אירועים ל-n8n בכל פעולה משמעותית, ו-
 | `casepoint/document-uploaded` | מסמך הועלה או נשמרה גרסה ערוכה |
 | `casepoint/payment-recorded` | תשלום נרשם |
 | `casepoint/task-assigned` | משימה הוקצתה לעובד (כולל אימייל וטלפון של האחראי) |
+| `casepoint/password-reset` | התבקש קוד איפוס סיסמה — לשליחה באימייל / SMS / וואטסאפ לפי `channel` |
 | `casepoint/meeting-request` | בקשת פגישה שנשלחה דרך `POST /api/webhooks/n8n` |
 
 ## קריאת נתונים (n8n → CasePoint)
@@ -49,6 +50,7 @@ CasePoint שולח אירועים ל-n8n בכל פעולה משמעותית, ו-
 | `05-payment-recorded-notification.json` | רישום כל תשלום בגיליון הכנסות |
 | `06-task-reminders.json` | **תזכורות משימות** — בדיקה כל 10 דקות ושליחה באימייל (Gmail) ו/או וואטסאפ (WhatsApp Business Cloud) לפי הערוצים שנבחרו במשימה |
 | `07-task-assigned-notification.json` | מייל אוטומטי לעובד כשמוקצית לו משימה |
+| `08-password-reset.json` | **שליחת קוד איפוס סיסמה** — ניתוב לפי הערוץ שנבחר: Gmail / Twilio SMS / WhatsApp |
 
 הוורקפלואים הם תבניות: אחרי הייבוא יש להחליף `REPLACE_WITH_SPREADSHEET_ID` /
 `REPLACE_WITH_WHATSAPP_PHONE_NUMBER_ID`, לחבר Credentials (Gmail, Google Sheets,

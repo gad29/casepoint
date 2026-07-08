@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { PasswordInput } from '@/components/password-input';
 
 type Mode = 'admin' | 'worker';
 
@@ -56,17 +58,17 @@ function LoginForm() {
               className={`language-option ${mode === 'admin' ? 'active' : ''}`}
               onClick={() => setMode('admin')}
             >
-              מנהל
+              מנהל ראשי
             </button>
             <button
               type="button"
               className={`language-option ${mode === 'worker' ? 'active' : ''}`}
               onClick={() => setMode('worker')}
             >
-              עובד
+              עובד / מנהל נוסף
             </button>
           </div>
-          <h2 style={{ marginTop: 0 }}>{mode === 'admin' ? 'כניסת מנהל' : 'כניסת עובד'}</h2>
+          <h2 style={{ marginTop: 0 }}>{mode === 'admin' ? 'כניסת מנהל ראשי' : 'כניסה עם אימייל'}</h2>
           <form onSubmit={submit}>
             {mode === 'worker' && (
               <div className="field">
@@ -85,11 +87,10 @@ function LoginForm() {
             )}
             <div className="field">
               <label htmlFor="login-password">סיסמה</label>
-              <input
+              <PasswordInput
                 id="login-password"
-                type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={setPassword}
                 autoFocus={mode === 'admin'}
                 autoComplete="current-password"
               />
@@ -98,6 +99,11 @@ function LoginForm() {
             <button className="button" type="submit" disabled={loading} style={{ width: '100%' }}>
               {loading ? 'מתחבר…' : 'כניסה'}
             </button>
+            <p style={{ textAlign: 'center', margin: '14px 0 0' }}>
+              <Link className="mini-link" href={'/forgot' as never} style={{ fontSize: 13 }}>
+                שכחתי סיסמה
+              </Link>
+            </p>
           </form>
         </div>
       </div>

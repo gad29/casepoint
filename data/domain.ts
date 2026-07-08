@@ -166,6 +166,19 @@ export interface ClientRecord {
   updatedAt: string;
 }
 
+/** Additional admin account (full privileges, stored in the DB). The root admin lives in .env. */
+export interface AdminRecord {
+  id: string;
+  name: string;
+  email: string;
+  /** Optional, for SMS/WhatsApp password-reset codes (international format). */
+  phone?: string;
+  passwordHash: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WorkerRecord {
   id: string;
   name: string;
