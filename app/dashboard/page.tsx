@@ -21,8 +21,46 @@ import {
   listVisibleTasks,
 } from '@/lib/store';
 import { sessionToViewer } from '@/lib/viewer';
+import { AnimatedNumber, CollectionDonut } from '@/components/animated-number';
 
 export const dynamic = 'force-dynamic';
+
+function FolderIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function FileWarnIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="12" y1="12" x2="12" y2="15" />
+      <line x1="12" y1="18" x2="12.01" y2="18" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+      <line x1="4" y1="22" x2="4" y2="15" />
+    </svg>
+  );
+}
+
+function CoinsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
 
 function shekel(amount: number) {
   return `₪${amount.toLocaleString('he-IL')}`;
@@ -94,33 +132,50 @@ export default async function DashboardPage() {
 
       <div className="pipeline-cards" style={{ marginBottom: 20 }}>
         <div className="pipeline-card pc-active">
-          <div className="pc-label">תיקים פעילים</div>
-          <div className="pc-count">{summary.openCases}</div>
+          <div className="pc-label"><span className="kpi-icon"><FolderIcon /></span> תיקים פעילים</div>
+          <div className="pc-count"><AnimatedNumber value={summary.openCases} /></div>
           <div className="muted" style={{ fontSize: 12 }}>מתוך {summary.cases} תיקים · {summary.clients} לקוחות</div>
         </div>
         <div className="pipeline-card pc-new">
-          <div className="pc-label">ממתינים למסמכים</div>
-          <div className="pc-count">{summary.missingDocsCases}</div>
+          <div className="pc-label"><span className="kpi-icon"><FileWarnIcon /></span> ממתינים למסמכים</div>
+          <div className="pc-count"><AnimatedNumber value={summary.missingDocsCases} /></div>
           <div className="muted" style={{ fontSize: 12 }}>תיקים פתוחים עם מסמכים חסרים</div>
         </div>
         <div className="pipeline-card pc-stuck">
-          <div className="pc-label">🚩 דורשים טיפול</div>
-          <div className="pc-count">{summary.troubleCases}</div>
+          <div className="pc-label"><span className="kpi-icon"><FlagIcon /></span> דורשים טיפול</div>
+          <div className="pc-count"><AnimatedNumber value={summary.troubleCases} /></div>
           <div className="muted" style={{ fontSize: 12 }}>תיקים שסומנו כתקועים / נדרשת השלמה</div>
         </div>
         {isAdmin ? (
           <div className="pipeline-card pc-done">
-            <div className="pc-label">יתרה לגבייה</div>
-            <div className="pc-count" style={{ fontSize: 34 }}>{shekel(summary.totalOutstanding)}</div>
+            <div className="pc-label"><span className="kpi-icon"><CoinsIcon /></span> יתרה לגבייה</div>
+            <div className="pc-count" style={{ fontSize: 30 }}>
+              <AnimatedNumber value={summary.totalOutstanding} prefix="₪" />
+            </div>
             <div className="muted" style={{ fontSize: 12 }}>שולם {shekel(summary.totalPaid)} מתוך {shekel(summary.totalFees)}</div>
           </div>
         ) : (
           <div className="pipeline-card pc-done">
-            <div className="pc-label">תיקים סגורים</div>
-            <div className="pc-count">{summary.closedCases}</div>
+            <div className="pc-label"><span className="kpi-icon"><FolderIcon /></span> תיקים סגורים</div>
+            <div className="pc-count"><AnimatedNumber value={summary.closedCases} /></div>
           </div>
         )}
       </div>
+
+      {isAdmin && summary.totalFees > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="donut-wrap">
+            <CollectionDonut percent={(summary.totalPaid / summary.totalFees) * 100} />
+            <div>
+              <h3 style={{ margin: '0 0 4px' }}>אחוז גבייה כולל</h3>
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+                נגבו {shekel(summary.totalPaid)} מתוך {shekel(summary.totalFees)} שכר טרחה
+                {summary.totalOutstanding > 0 && ` · נותרו ${shekel(summary.totalOutstanding)} לגבייה`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid cols-2">
         <div className="card">

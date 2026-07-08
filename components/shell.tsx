@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { TaskAlerts } from '@/components/task-alerts';
+import { Topbar } from '@/components/topbar';
 
 type AdminInfo = { email: string; name: string; role: 'admin' | 'worker'; authDisabled: boolean };
 
@@ -180,7 +181,10 @@ export function AdminFrame({ children }: { children: ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="content">{children}</main>
+      <div className="shell-main">
+        <Topbar userName={admin?.name || admin?.email || 'מנהל'} />
+        <main className="content">{children}</main>
+      </div>
       <TaskAlerts />
     </div>
   );

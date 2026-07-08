@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   CASE_KIND_LABELS,
+  CASE_STAGES,
   COMPANY_LABELS,
   DEFAULT_CHECKLIST_CODES,
   documentTemplates,
@@ -223,6 +224,82 @@ function NewCaseForm({
   );
 }
 
+const BOARD_STAGES: CaseStage[] = CASE_STAGES.filter((s) => s !== 'closed');
+
+function KanbanBoard({ cases, onMove }: { cases: CaseRow[]; onMove: (caseId: string, stage: CaseStage) => void }) {
+  const router = useRouter();
+  const [dragOver, setDragOver] = useState<CaseStage | null>(null);
+
+  return (
+    <div className="kanban">
+      {BOARD_STAGES.map((stage) => {
+        const columnCases = cases.filter((c) => c.stage === stage);
+        return (
+          <div
+            key={stage}
+            className={`kanban-column ${dragOver === stage ? 'dragover' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(stage);
+            }}
+            onDragLeave={() => setDragOver((v) => (v === stage ? null : v))}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(null);
+              const caseId = e.dataTransfer.getData('text/case-id');
+              if (caseId) onMove(caseId, stage);
+            }}
+          >
+            <div className="kanban-column-header">
+              <span>{STAGE_LABELS[stage]}</span>
+              <span className="kanban-count">{columnCases.length}</span>
+            </div>
+            <div className="kanban-cards">
+              {columnCases.map((c) => (
+                <div
+                  key={c.id}
+                  className={`kanban-card ${c.troubleFlag ? 'trouble' : ''}`}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData('text/case-id', c.id)}
+                  onClick={() => router.push(`/cases/${c.id}` as never)}
+                  title="לחיצה לפתיחה · גרירה לעמודה אחרת לעדכון השלב"
+                >
+                  <div className="kanban-card-title">
+                    {c.troubleFlag && '🚩 '}
+                    {c.clientName}
+                  </div>
+                  <div className="kanban-card-sub">
+                    <span>{c.title}</span>
+                    {c.company && c.company !== 'none' && <span>· {COMPANY_LABELS[c.company]}</span>}
+                    {c.missingItems > 0 && <span className="cli-missing">· {c.missingItems} חסרים</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ListViewIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+}
+
+function BoardViewIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="18" rx="1" /><rect x="14" y="3" width="7" height="12" rx="1" />
+    </svg>
+  );
+}
+
 function CasesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -230,7 +307,23 @@ function CasesPageInner() {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterId>('open');
+  const [view, setView] = useState<'list' | 'board'>('list');
   const [showNew, setShowNew] = useState(searchParams.get('new') === '1');
+
+  async function moveCase(caseId: string, stage: CaseStage) {
+    const existing = cases.find((c) => c.id === caseId);
+    if (!existing || existing.stage === stage) return;
+    // Optimistic update, then persist.
+    setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, stage } : c)));
+    const res = await fetch(`/api/cases/${caseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage }),
+    });
+    if (!res.ok) {
+      setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, stage: existing.stage } : c)));
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -284,16 +377,28 @@ function CasesPageInner() {
         />
       )}
 
-      <div className="tab-bar">
-        {FILTERS.map(({ id, label }) => (
-          <button key={id} type="button" className={`tab ${filter === id ? 'active' : ''}`} onClick={() => setFilter(id)}>
-            {label}
+      <div className="split" style={{ alignItems: 'flex-start', gap: 16 }}>
+        <div className="tab-bar" style={{ flex: 1, marginBottom: 22 }}>
+          {FILTERS.map(({ id, label }) => (
+            <button key={id} type="button" className={`tab ${filter === id ? 'active' : ''}`} onClick={() => setFilter(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="view-toggle">
+          <button type="button" className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
+            <ListViewIcon /> רשימה
           </button>
-        ))}
+          <button type="button" className={view === 'board' ? 'active' : ''} onClick={() => setView('board')}>
+            <BoardViewIcon /> לוח
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="card muted" style={{ padding: 24 }}>טוען תיקים…</div>
+      ) : view === 'board' ? (
+        <KanbanBoard cases={cases.filter((c) => c.stage !== 'closed')} onMove={moveCase} />
       ) : filtered.length === 0 ? (
         <div className="card muted" style={{ padding: 24 }}>אין תיקים בסינון הנוכחי.</div>
       ) : (
