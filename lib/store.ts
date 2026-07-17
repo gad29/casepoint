@@ -55,7 +55,7 @@ export function clientDocumentsFolder(clientId: string) {
 function logStore(level: 'info' | 'warn' | 'error', message: string, details?: Record<string, unknown>) {
   const payload = details ? ` ${JSON.stringify(details)}` : '';
   const logger = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info;
-  logger(`[CasePoint Store] ${message}${payload}`);
+  logger(`[CRM_YE Store] ${message}${payload}`);
 }
 
 function readJson<T>(filePath: string, fallback: T): T {
@@ -103,7 +103,7 @@ function nowIso() {
 export async function fireEvent(event: string, payload: Record<string, unknown>) {
   if (!env.n8nWebhookBaseUrl) return { ok: false, error: 'n8n not configured' } as const;
   try {
-    const result = await triggerN8n(`casepoint/${event}`, { event, ...payload, firedAt: nowIso() });
+    const result = await triggerN8n(`crmye/${event}`, { event, ...payload, firedAt: nowIso() });
     if (!result.ok) logStore('warn', `n8n event ${event} failed`, { error: result.error });
     return result;
   } catch (error) {
@@ -521,7 +521,7 @@ export function listCaseDocuments(caseId: string) {
 }
 
 function sanitizeFileName(name: string) {
-  const base = path.basename(name).replace(/[\\/:*?"<>| -]/g, '_').trim();
+  const base = path.basename(name).replace(/[-\\/:*?"<>|\s]/g, '_').trim();
   return base || 'file';
 }
 
@@ -959,7 +959,7 @@ const RESET_COOLDOWN_MS = 60 * 1000;
 const RESET_MAX_ATTEMPTS = 5;
 
 function hashResetCode(code: string) {
-  return crypto.createHash('sha256').update(`casepoint-reset:${code}`).digest('hex');
+  return crypto.createHash('sha256').update(`crmye-reset:${code}`).digest('hex');
 }
 
 function readResets(): ResetRecord[] {
@@ -969,7 +969,7 @@ function readResets(): ResetRecord[] {
 
 /**
  * Creates a reset code for the account behind `email` (admin or worker) and
- * fires the casepoint/password-reset n8n event with the requested channel.
+ * fires the crmye/password-reset n8n event with the requested channel.
  * Always behaves the same externally so emails can't be enumerated.
  */
 export async function requestPasswordReset(email: string, channel: 'email' | 'sms' | 'whatsapp') {

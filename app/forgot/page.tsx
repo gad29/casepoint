@@ -76,7 +76,7 @@ export default function ForgotPasswordPage() {
         <div className="sidebar-brand" style={{ justifyContent: 'center', borderBottom: 'none' }}>
           <span className="sidebar-brand-mark">C</span>
           <div style={{ textAlign: 'start' }}>
-            <div className="sidebar-brand-name">CasePoint</div>
+            <div className="sidebar-brand-name">CRM_YE</div>
             <div className="sidebar-brand-sub">איפוס סיסמה</div>
           </div>
         </div>

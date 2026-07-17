@@ -5,8 +5,8 @@ import { triggerN8n } from '@/lib/n8n';
 
 /**
  * Generic forwarder: lets the UI (or an authenticated caller) push an arbitrary
- * event to n8n, e.g. { "path": "casepoint/meeting-request", "payload": {...} }.
- * Auth is enforced by the middleware (admin session or x-casepoint-api-key).
+ * event to n8n, e.g. { "path": "crmye/meeting-request", "payload": {...} }.
+ * Auth is enforced by the middleware (admin session or x-crmye-api-key).
  */
 export async function POST(request: NextRequest) {
   if (!hasN8nConfig()) {

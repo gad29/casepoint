@@ -1,5 +1,5 @@
 {
-  "name": "CasePoint — Task reminders (email + WhatsApp)",
+  "name": "CRM_YE — Task reminders (email + WhatsApp)",
   "nodes": [
     {
       "parameters": {
@@ -15,11 +15,11 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.CASEPOINT_APP_BASE_URL }}/api/tasks/due?markSent=1",
+        "url": "={{ $env.CRMYE_APP_BASE_URL }}/api/tasks/due?markSent=1",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-casepoint-api-key", "value": "={{ $env.CASEPOINT_API_TOKEN }}" }
+            { "name": "x-crmye-api-key", "value": "={{ $env.CRMYE_API_TOKEN }}" }
           ]
         },
         "options": {}

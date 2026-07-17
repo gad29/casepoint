@@ -1,10 +1,10 @@
 {
-  "name": "CasePoint — Stage change → client email",
+  "name": "CRM_YE — Stage change → client email",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "casepoint/case-stage-changed",
+        "path": "crmye/case-stage-changed",
         "options": {}
       },
       "id": "webhook-1",

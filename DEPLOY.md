@@ -1,4 +1,4 @@
-# פריסת CasePoint לשרת VPS עם CloudPanel
+# פריסת CRM_YE לשרת VPS עם CloudPanel
 
 מדריך צעד-אחר-צעד לפריסה בכתובת **https://casepoint.ghsystems.work** על פורט **3006**.
 
@@ -17,7 +17,7 @@
 
 | Type | Name | Value |
 |------|------|-------|
-| A | `casepoint` | כתובת ה-IP של ה-VPS |
+| A | `crmye` | כתובת ה-IP של ה-VPS |
 
 המתן שהרשומה תתפשט (בדיקה: `ping casepoint.ghsystems.work`).
 
@@ -29,22 +29,22 @@
    - **Domain Name:** `casepoint.ghsystems.work`
    - **Node.js Version:** 20 (או 22)
    - **App Port:** `3006`
-   - **Site User / Password:** צור משתמש (למשל `casepoint`)
+   - **Site User / Password:** צור משתמש (למשל `crmye`)
 4. לחץ **Create**.
 
 CloudPanel יוצר vhost של nginx שמפנה את הדומיין ל-`127.0.0.1:3006`.
 
 ## שלב 3 — הורדת הקוד לשרת
 
-התחבר ב-SSH כמשתמש האתר (או `su - casepoint`):
+התחבר ב-SSH כמשתמש האתר (או `su - crmye`):
 
 ```bash
-ssh casepoint@<server-ip>
+ssh crmye@<server-ip>
 cd ~/htdocs/casepoint.ghsystems.work
 
 # הסר קבצי ברירת מחדל אם קיימים, ואז שכפל את הריפו לתוך התיקייה
 rm -rf * .[!.]* 2>/dev/null || true
-git clone https://github.com/gad29/casepoint.git .
+git clone https://github.com/gad29/CRM_YE.git .
 ```
 
 ## שלב 4 — קובץ סביבה לפרודקשן
@@ -62,7 +62,7 @@ ADMIN_SESSION_SECRET=<מחרוזת אקראית — openssl rand -hex 32>
 APP_BASE_URL=https://casepoint.ghsystems.work
 ```
 
-אופציונלי (כשמחברים n8n): `N8N_WEBHOOK_BASE_URL`, `CASEPOINT_API_TOKEN`.
+אופציונלי (כשמחברים n8n): `N8N_WEBHOOK_BASE_URL`, `CRMYE_API_TOKEN`.
 
 יצירת סודות אקראיים:
 
@@ -90,7 +90,7 @@ pm2 startup   # הרץ את הפקודה שהוא מדפיס (פעם אחת, כ-
 בדיקה:
 
 ```bash
-pm2 status casepoint
+pm2 status crmye
 curl -I http://127.0.0.1:3006   # אמור להחזיר 307 → /login
 ```
 
@@ -131,7 +131,7 @@ client_max_body_size 30M;
 ```bash
 crontab -e
 # גיבוי יומי ב-02:30 לתיקיית backups עם שמירת 14 ימים
-30 2 * * * tar -czf ~/backups/casepoint-data-$(date +\%F).tar.gz -C ~/htdocs/casepoint.ghsystems.work data && find ~/backups -name 'casepoint-data-*.tar.gz' -mtime +14 -delete
+30 2 * * * tar -czf ~/backups/crmye-data-$(date +\%F).tar.gz -C ~/htdocs/casepoint.ghsystems.work data && find ~/backups -name 'crmye-data-*.tar.gz' -mtime +14 -delete
 ```
 
 (צור קודם את התיקייה: `mkdir -p ~/backups`.)
@@ -143,15 +143,15 @@ cd ~/htdocs/casepoint.ghsystems.work
 git pull
 npm install
 npm run build
-pm2 restart casepoint
+pm2 restart crmye
 ```
 
 ## פתרון תקלות
 
 | בעיה | בדיקה |
 |---|---|
-| האתר לא עולה | `pm2 logs casepoint` — שגיאות build/env |
+| האתר לא עולה | `pm2 logs crmye` — שגיאות build/env |
 | 502 מ-nginx | האם האפליקציה מאזינה? `curl -I http://127.0.0.1:3006` ; ודא ש-App Port באתר = 3006 |
-| לא מצליח להתחבר | ודא `ADMIN_PASSWORD` ב-`.env.production.local` ואז `pm2 restart casepoint` |
+| לא מצליח להתחבר | ודא `ADMIN_PASSWORD` ב-`.env.production.local` ואז `pm2 restart crmye` |
 | העלאת קובץ נכשלת (413) | שלב 8 — `client_max_body_size` |
-| n8n לא מקבל אירועים | `N8N_WEBHOOK_BASE_URL` מוגדר? בדוק `pm2 logs` להודעות `[CasePoint Store] n8n event` |
+| n8n לא מקבל אירועים | `N8N_WEBHOOK_BASE_URL` מוגדר? בדוק `pm2 logs` להודעות `[CRM_YE Store] n8n event` |

@@ -1,7 +1,7 @@
 /**
- * CasePoint domain model.
+ * CRM_YE domain model.
  *
- * CasePoint manages the full journey of a client whose advisor prepares and
+ * CRM_YE manages the full journey of a client whose advisor prepares and
  * submits applications to Israeli government offices: collecting documents,
  * reviewing them, submitting the case, tracking the office's handling,
  * receiving the decision, closing the case, and collecting payment.

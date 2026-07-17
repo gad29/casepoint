@@ -1,5 +1,5 @@
 {
-  "name": "CasePoint — Daily Google Sheets sync",
+  "name": "CRM_YE — Daily Google Sheets sync",
   "nodes": [
     {
       "parameters": {
@@ -15,17 +15,17 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.CASEPOINT_APP_BASE_URL }}/api/summary",
+        "url": "={{ $env.CRMYE_APP_BASE_URL }}/api/summary",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-casepoint-api-key", "value": "={{ $env.CASEPOINT_API_TOKEN }}" }
+            { "name": "x-crmye-api-key", "value": "={{ $env.CRMYE_API_TOKEN }}" }
           ]
         },
         "options": {}
       },
       "id": "http-1",
-      "name": "Get CasePoint summary",
+      "name": "Get CRM_YE summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [220, 0]
@@ -74,8 +74,8 @@
     }
   ],
   "connections": {
-    "Every morning 07:00": { "main": [[{ "node": "Get CasePoint summary", "type": "main", "index": 0 }]] },
-    "Get CasePoint summary": { "main": [[{ "node": "Split cases", "type": "main", "index": 0 }]] },
+    "Every morning 07:00": { "main": [[{ "node": "Get CRM_YE summary", "type": "main", "index": 0 }]] },
+    "Get CRM_YE summary": { "main": [[{ "node": "Split cases", "type": "main", "index": 0 }]] },
     "Split cases": { "main": [[{ "node": "Google Sheets — upsert case rows", "type": "main", "index": 0 }]] }
   },
   "settings": {},

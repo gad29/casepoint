@@ -9,10 +9,10 @@ const source = path.join(root, 'node_modules', 'pdfjs-dist', 'build', 'pdf.worke
 const target = path.join(root, 'public', 'pdf.worker.min.mjs');
 
 if (!fs.existsSync(source)) {
-  console.warn('[casepoint] pdfjs-dist worker not found; run npm install first.');
+  console.warn('[crmye] pdfjs-dist worker not found; run npm install first.');
   process.exit(0);
 }
 
 fs.mkdirSync(path.dirname(target), { recursive: true });
 fs.copyFileSync(source, target);
-console.log('[casepoint] pdf.js worker copied to public/pdf.worker.min.mjs');
+console.log('[crmye] pdf.js worker copied to public/pdf.worker.min.mjs');

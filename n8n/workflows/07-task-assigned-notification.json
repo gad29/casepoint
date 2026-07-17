@@ -1,10 +1,10 @@
 {
-  "name": "CasePoint — Task assigned → notify worker",
+  "name": "CRM_YE — Task assigned → notify worker",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "casepoint/task-assigned",
+        "path": "crmye/task-assigned",
         "options": {}
       },
       "id": "webhook-1",
@@ -39,7 +39,7 @@
         "sendTo": "={{ $json.body.assigneeEmail }}",
         "subject": "=📋 משימה חדשה: {{ $json.body.title }}",
         "emailType": "text",
-        "message": "=שלום {{ $json.body.assigneeName }},\n\nהוקצתה לך משימה חדשה במערכת CasePoint:\n\n{{ $json.body.title }}\n{{ $json.body.notes ? 'פרטים: ' + $json.body.notes + '\\n' : '' }}{{ $json.body.dueAt ? 'מועד יעד: ' + new Date($json.body.dueAt).toLocaleString('he-IL') + '\\n' : '' }}עדיפות: {{ $json.body.priority === 'urgent' ? 'דחוף 🚨' : $json.body.priority === 'high' ? 'חשוב' : 'רגיל' }}\n\nכניסה למערכת: {{ $env.CASEPOINT_APP_BASE_URL }}/tasks",
+        "message": "=שלום {{ $json.body.assigneeName }},\n\nהוקצתה לך משימה חדשה במערכת CRM_YE:\n\n{{ $json.body.title }}\n{{ $json.body.notes ? 'פרטים: ' + $json.body.notes + '\\n' : '' }}{{ $json.body.dueAt ? 'מועד יעד: ' + new Date($json.body.dueAt).toLocaleString('he-IL') + '\\n' : '' }}עדיפות: {{ $json.body.priority === 'urgent' ? 'דחוף 🚨' : $json.body.priority === 'high' ? 'חשוב' : 'רגיל' }}\n\nכניסה למערכת: {{ $env.CRMYE_APP_BASE_URL }}/tasks",
         "options": {}
       },
       "id": "gmail-1",

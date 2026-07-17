@@ -1,5 +1,5 @@
 {
-  "name": "CasePoint — Weekly missing-documents reminders",
+  "name": "CRM_YE — Weekly missing-documents reminders",
   "nodes": [
     {
       "parameters": {
@@ -15,11 +15,11 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.CASEPOINT_APP_BASE_URL }}/api/summary",
+        "url": "={{ $env.CRMYE_APP_BASE_URL }}/api/summary",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-casepoint-api-key", "value": "={{ $env.CASEPOINT_API_TOKEN }}" }
+            { "name": "x-crmye-api-key", "value": "={{ $env.CRMYE_API_TOKEN }}" }
           ]
         },
         "options": {}

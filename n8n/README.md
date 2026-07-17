@@ -1,38 +1,38 @@
-# CasePoint × n8n
+# CRM_YE × n8n
 
-CasePoint שולח אירועים ל-n8n בכל פעולה משמעותית, ו-n8n יכול לקרוא נתונים חזרה
+CRM_YE שולח אירועים ל-n8n בכל פעולה משמעותית, ו-n8n יכול לקרוא נתונים חזרה
 מהמערכת. כך מחברים גוגל שיטס, יומן גוגל, מיילים, וואטסאפ וכל שירות אחר — בלי
 לגעת בקוד.
 
 ## הגדרה
 
-1. ב-CasePoint (`.env.local`):
+1. ב-CRM_YE (`.env.local`):
    - `N8N_WEBHOOK_BASE_URL` — כתובת ה-webhook של n8n, למשל `https://n8n.example.com/webhook`
-   - `CASEPOINT_API_TOKEN` — מחרוזת אקראית ארוכה (משותפת עם n8n)
+   - `CRMYE_API_TOKEN` — מחרוזת אקראית ארוכה (משותפת עם n8n)
 2. ב-n8n הגדר משתני סביבה:
-   - `CASEPOINT_APP_BASE_URL` — כתובת האפליקציה, למשל `https://casepoint.example.com`
-   - `CASEPOINT_API_TOKEN` — אותו טוקן
+   - `CRMYE_APP_BASE_URL` — כתובת האפליקציה, למשל `https://crmye.example.com`
+   - `CRMYE_API_TOKEN` — אותו טוקן
 3. ייבא את הוורקפלואים מתיקיית `workflows/` (Import from file), חבר Credentials
    של Google (Sheets / Calendar / Gmail) והפעל.
 
-## אירועים יוצאים (CasePoint → n8n)
+## אירועים יוצאים (CRM_YE → n8n)
 
 | נתיב webhook | מתי |
 |---|---|
-| `casepoint/client-created` | לקוח חדש נוצר |
-| `casepoint/case-created` | תיק חדש נפתח |
-| `casepoint/case-stage-changed` | שלב תיק השתנה (כולל פרטי לקוח, שלב קודם/חדש, מסמכים חסרים) |
-| `casepoint/case-trouble-flag` | תיק סומן כתקוע / הוסר הסימון |
-| `casepoint/case-decision` | עודכנה החלטה (אושר / חקירה / תוצאת חקירה) |
-| `casepoint/document-uploaded` | מסמך הועלה או נשמרה גרסה ערוכה |
-| `casepoint/payment-recorded` | תשלום נרשם |
-| `casepoint/task-assigned` | משימה הוקצתה לעובד (כולל אימייל וטלפון של האחראי) |
-| `casepoint/password-reset` | התבקש קוד איפוס סיסמה — לשליחה באימייל / SMS / וואטסאפ לפי `channel` |
-| `casepoint/meeting-request` | בקשת פגישה שנשלחה דרך `POST /api/webhooks/n8n` |
+| `crmye/client-created` | לקוח חדש נוצר |
+| `crmye/case-created` | תיק חדש נפתח |
+| `crmye/case-stage-changed` | שלב תיק השתנה (כולל פרטי לקוח, שלב קודם/חדש, מסמכים חסרים) |
+| `crmye/case-trouble-flag` | תיק סומן כתקוע / הוסר הסימון |
+| `crmye/case-decision` | עודכנה החלטה (אושר / חקירה / תוצאת חקירה) |
+| `crmye/document-uploaded` | מסמך הועלה או נשמרה גרסה ערוכה |
+| `crmye/payment-recorded` | תשלום נרשם |
+| `crmye/task-assigned` | משימה הוקצתה לעובד (כולל אימייל וטלפון של האחראי) |
+| `crmye/password-reset` | התבקש קוד איפוס סיסמה — לשליחה באימייל / SMS / וואטסאפ לפי `channel` |
+| `crmye/meeting-request` | בקשת פגישה שנשלחה דרך `POST /api/webhooks/n8n` |
 
-## קריאת נתונים (n8n → CasePoint)
+## קריאת נתונים (n8n → CRM_YE)
 
-כל הקריאות עם הכותרת `x-casepoint-api-key: <CASEPOINT_API_TOKEN>`:
+כל הקריאות עם הכותרת `x-crmye-api-key: <CRMYE_API_TOKEN>`:
 
 - `GET /api/summary` — כל התיקים + סטטוס + כספים (מושלם לסנכרון לגיליון או סיכום יומי)
 - `GET /api/tasks/due?markSent=1` — תזכורות שהגיע זמנן (כל תזכורת מוחזרת פעם אחת בלבד; כולל אימייל/טלפון של האחראי וערוצי השליחה המבוקשים)

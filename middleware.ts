@@ -33,7 +33,8 @@ function isAdminOnlyPath(pathname: string) {
 /** Integration endpoints n8n calls with the shared API token instead of a session cookie. */
 function hasValidApiToken(request: NextRequest) {
   if (!env.apiAccessToken) return false;
-  const header = request.headers.get('x-casepoint-api-key');
+  // x-casepoint-api-key is honored for n8n workflows configured before the rename.
+  const header = request.headers.get('x-crmye-api-key') || request.headers.get('x-casepoint-api-key');
   return Boolean(header && header === env.apiAccessToken);
 }
 

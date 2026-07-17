@@ -145,10 +145,10 @@ export function Topbar({ userName, onMenuClick }: { userName: string; onMenuClic
     setDark(next);
     if (next) {
       document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('casepoint-theme', 'dark');
+      localStorage.setItem('crmye-theme', 'dark');
     } else {
       document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('casepoint-theme', 'light');
+      localStorage.setItem('crmye-theme', 'light');
     }
   }
 

@@ -1,10 +1,10 @@
 {
-  "name": "CasePoint — Payment recorded → confirmation + income sheet",
+  "name": "CRM_YE — Payment recorded → confirmation + income sheet",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "casepoint/payment-recorded",
+        "path": "crmye/payment-recorded",
         "options": {}
       },
       "id": "webhook-1",

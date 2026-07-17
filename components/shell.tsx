@@ -138,7 +138,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
         <div className="sidebar-brand">
           <span className="sidebar-brand-mark">C</span>
           <div>
-            <div className="sidebar-brand-name">CasePoint</div>
+            <div className="sidebar-brand-name">CRM_YE</div>
             <div className="sidebar-brand-sub">ליווי תיקים מול משרדי ממשלה</div>
           </div>
         </div>

@@ -1,6 +1,6 @@
-# CasePoint
+# CRM_YE
 
-CasePoint היא מערכת CRM למלווה פרטי שמסייע ללקוחות להגיש בקשות למשרדי ממשלה —
+CRM_YE היא מערכת CRM למלווה פרטי שמסייע ללקוחות להגיש בקשות למשרדי ממשלה —
 ביטוח לאומי, רשות האוכלוסין, רשות המסים, משרד השיכון ועוד. המערכת מלווה כל תיק
 מרגע איסוף המסמכים, דרך ההגשה ומעקב אחרי הטיפול במשרד, ועד סגירת התיק והתשלום.
 
@@ -47,7 +47,7 @@ npm run dev
 - `GET/PATCH/DELETE /api/documents/:id`, `POST /api/documents/:id/edited`
 - `GET/POST /api/cases`, `GET/PATCH /api/cases/:id`, `POST/PATCH/DELETE /api/cases/:id/checklist`
 - `GET/POST /api/payments`, `DELETE /api/payments/:id`
-- `GET /api/summary` — סיכום מלא ל-n8n / דוחות (עם `x-casepoint-api-key`)
+- `GET /api/summary` — סיכום מלא ל-n8n / דוחות (עם `x-crmye-api-key`)
 - `POST /api/webhooks/n8n` — שליחת אירוע מותאם ל-n8n
 
 ## אחסון

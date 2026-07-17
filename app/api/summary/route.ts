@@ -4,7 +4,7 @@ import { getCaseFinance, getDashboardSummary, listCases, listClients, listPaymen
 
 /**
  * Aggregated snapshot of the whole practice.
- * Used by the dashboard UI, and by n8n (with the x-casepoint-api-key header)
+ * Used by the dashboard UI, and by n8n (with the x-crmye-api-key header)
  * for Google Sheets summaries, daily briefings, etc.
  */
 export async function GET() {

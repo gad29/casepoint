@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import { env, hasAdminPassword, isProductionLike } from '@/lib/env';
 
-export const ADMIN_AUTH_COOKIE = 'casepoint-admin-session';
+export const ADMIN_AUTH_COOKIE = 'crmye-admin-session';
 const DEFAULT_SESSION_HOURS = 24;
 const encoder = new TextEncoder();
 
@@ -26,7 +26,7 @@ function decodeBase64url(input: string) {
 }
 
 function getSessionSecret() {
-  return env.adminSessionSecret || env.adminPasswordHash || env.adminPassword || 'casepoint-admin-change-me';
+  return env.adminSessionSecret || env.adminPasswordHash || env.adminPassword || 'crmye-admin-change-me';
 }
 
 async function signPayload(encodedPayload: string) {

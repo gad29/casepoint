@@ -11,12 +11,12 @@ const sans = Noto_Sans_Hebrew({
 });
 
 export const metadata: Metadata = {
-  title: 'CasePoint',
+  title: 'CRM_YE',
   description: 'ניהול תיקי לקוחות, מסמכים ותשלומים עבור מלווה בהגשות למשרדי ממשלה.',
 };
 
 // Applies the saved theme before paint to avoid a light-mode flash.
-const themeInit = `(function(){try{var t=localStorage.getItem('casepoint-theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();`;
+const themeInit = `(function(){try{var t=localStorage.getItem('crmye-theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

@@ -2,7 +2,7 @@ export const env = {
   /** Admin login: plain password or bcrypt hash (hash wins when both are set). */
   adminPassword: process.env.ADMIN_PASSWORD,
   adminPasswordHash: process.env.ADMIN_PASSWORD_HASH,
-  adminEmail: process.env.ADMIN_EMAIL || 'admin@casepoint.local',
+  adminEmail: process.env.ADMIN_EMAIL || 'admin@crmye.local',
   /** Admin phone for WhatsApp reminders (international format). */
   adminPhone: process.env.ADMIN_PHONE || '',
   adminSessionSecret: process.env.ADMIN_SESSION_SECRET,
@@ -12,8 +12,10 @@ export const env = {
 
   /** Base URL of the n8n webhook endpoint, e.g. https://n8n.example.com/webhook */
   n8nWebhookBaseUrl: process.env.N8N_WEBHOOK_BASE_URL,
-  /** Shared secret n8n sends in x-casepoint-api-key when reading data from the app. */
-  apiAccessToken: process.env.CASEPOINT_API_TOKEN,
+  /** Shared secret n8n sends in x-crmye-api-key when reading data from the app.
+   *  CASEPOINT_API_TOKEN is honored as a fallback for deployments configured
+   *  before the project was renamed to CRM_YE. */
+  apiAccessToken: process.env.CRMYE_API_TOKEN || process.env.CASEPOINT_API_TOKEN,
   /** Shared secret for POST /api/webhooks/n8n when not using an admin session. */
   n8nForwarderSecret: process.env.N8N_FORWARDER_SECRET,
 

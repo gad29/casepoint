@@ -1,10 +1,10 @@
 {
-  "name": "CasePoint — Meeting request → Google Calendar",
+  "name": "CRM_YE — Meeting request → Google Calendar",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "casepoint/meeting-request",
+        "path": "crmye/meeting-request",
         "options": {}
       },
       "id": "webhook-1",

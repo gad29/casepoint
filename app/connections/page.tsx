@@ -3,17 +3,17 @@ import { env, hasAdminPassword, hasApiAccessToken, hasN8nConfig } from '@/lib/en
 export const dynamic = 'force-dynamic';
 
 const EVENTS = [
-  { path: 'casepoint/client-created', description: 'לקוח חדש נוצר — למשל: הוספת שורה בגוגל שיטס, הודעת ברוכים הבאים' },
-  { path: 'casepoint/case-created', description: 'תיק חדש נפתח — עדכון טבלת מעקב, יומן משימות' },
-  { path: 'casepoint/case-stage-changed', description: 'שלב תיק השתנה — שליחת עדכון ללקוח במייל/וואטסאפ, תזכורות' },
-  { path: 'casepoint/case-trouble-flag', description: 'תיק סומן כתקוע / נדרשת השלמה — התראה מיידית' },
-  { path: 'casepoint/case-decision', description: 'עודכנה החלטת המשרד (אושר / חקירה / נדחה)' },
-  { path: 'casepoint/document-uploaded', description: 'מסמך הועלה — גיבוי לדרייב, עדכון סטטוס' },
-  { path: 'casepoint/payment-recorded', description: 'תשלום נרשם — הפקת קבלה, עדכון גיליון הכנסות' },
-  { path: 'casepoint/task-assigned', description: 'משימה הוקצתה לעובד — מייל אוטומטי לעובד' },
-  { path: 'casepoint/password-reset', description: 'קוד איפוס סיסמה — נשלח באימייל / SMS / וואטסאפ לפי בחירת המשתמש' },
-  { path: 'casepoint/meeting-request', description: 'בקשת פגישה (נשלח ידנית/מסוכן AI) — קביעת פגישה ביומן גוגל' },
-  { path: 'casepoint/daily-summary', description: 'סיכום יומי (מופעל מתוזמן ב-n8n שקורא מ-GET /api/summary)' },
+  { path: 'crmye/client-created', description: 'לקוח חדש נוצר — למשל: הוספת שורה בגוגל שיטס, הודעת ברוכים הבאים' },
+  { path: 'crmye/case-created', description: 'תיק חדש נפתח — עדכון טבלת מעקב, יומן משימות' },
+  { path: 'crmye/case-stage-changed', description: 'שלב תיק השתנה — שליחת עדכון ללקוח במייל/וואטסאפ, תזכורות' },
+  { path: 'crmye/case-trouble-flag', description: 'תיק סומן כתקוע / נדרשת השלמה — התראה מיידית' },
+  { path: 'crmye/case-decision', description: 'עודכנה החלטת המשרד (אושר / חקירה / נדחה)' },
+  { path: 'crmye/document-uploaded', description: 'מסמך הועלה — גיבוי לדרייב, עדכון סטטוס' },
+  { path: 'crmye/payment-recorded', description: 'תשלום נרשם — הפקת קבלה, עדכון גיליון הכנסות' },
+  { path: 'crmye/task-assigned', description: 'משימה הוקצתה לעובד — מייל אוטומטי לעובד' },
+  { path: 'crmye/password-reset', description: 'קוד איפוס סיסמה — נשלח באימייל / SMS / וואטסאפ לפי בחירת המשתמש' },
+  { path: 'crmye/meeting-request', description: 'בקשת פגישה (נשלח ידנית/מסוכן AI) — קביעת פגישה ביומן גוגל' },
+  { path: 'crmye/daily-summary', description: 'סיכום יומי (מופעל מתוזמן ב-n8n שקורא מ-GET /api/summary)' },
 ];
 
 function StatusBadge({ ok, okText, missingText }: { ok: boolean; okText: string; missingText: string }) {
@@ -55,8 +55,8 @@ export default function ConnectionsPage() {
             <StatusBadge ok={hasApiAccessToken()} okText="מוגדר" missingText="לא מוגדר" />
           </div>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            CASEPOINT_API_TOKEN מאפשר ל-n8n לקרוא נתונים מהמערכת (למשל GET /api/summary לסיכום יומי לגיליון)
-            באמצעות הכותרת <code dir="ltr">x-casepoint-api-key</code>.
+            CRMYE_API_TOKEN מאפשר ל-n8n לקרוא נתונים מהמערכת (למשל GET /api/summary לסיכום יומי לגיליון)
+            באמצעות הכותרת <code dir="ltr">x-crmye-api-key</code>.
           </p>
         </div>
 
@@ -114,7 +114,7 @@ export default function ConnectionsPage() {
           <li><code dir="ltr">POST /api/webhooks/n8n</code> — שליחת אירוע מותאם אישית ל-n8n מתוך המערכת.</li>
         </ul>
         <p className="muted" style={{ fontSize: 13 }}>
-          יש לצרף לכל קריאה את הכותרת <code dir="ltr">x-casepoint-api-key: {'<CASEPOINT_API_TOKEN>'}</code>.
+          יש לצרף לכל קריאה את הכותרת <code dir="ltr">x-crmye-api-key: {'<CRMYE_API_TOKEN>'}</code>.
         </p>
       </div>
     </div>

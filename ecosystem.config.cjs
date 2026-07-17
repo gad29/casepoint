@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'casepoint',
+      name: 'crmye',
       script: 'npm',
       args: 'start',
       cwd: __dirname,

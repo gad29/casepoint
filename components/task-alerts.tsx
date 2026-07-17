@@ -13,7 +13,7 @@ type AlertTask = {
   status: 'open' | 'done';
 };
 
-const DISMISS_KEY = 'casepoint-dismissed-alerts';
+const DISMISS_KEY = 'crmye-dismissed-alerts';
 const SOON_MS = 60 * 60 * 1000; // due within the next hour
 
 function getDismissed(): string[] {

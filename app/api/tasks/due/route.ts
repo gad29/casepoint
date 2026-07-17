@@ -8,12 +8,11 @@ import { getViewer } from '@/lib/viewer';
  * Due reminders feed for the n8n scheduler.
  * GET /api/tasks/due?markSent=1 returns each due reminder exactly once,
  * with the assignee's email/phone and requested channels.
- * Auth: admin session, or the x-casepoint-api-key token (n8n).
+ * Auth: admin session, or the x-crmye-api-key token (n8n).
  */
 export async function GET(request: NextRequest) {
-  const hasToken = Boolean(
-    env.apiAccessToken && request.headers.get('x-casepoint-api-key') === env.apiAccessToken,
-  );
+  const providedToken = request.headers.get('x-crmye-api-key') || request.headers.get('x-casepoint-api-key');
+  const hasToken = Boolean(env.apiAccessToken && providedToken === env.apiAccessToken);
   if (!hasToken) {
     const auth = await getViewer();
     if (!auth || auth.viewer.role !== 'admin') {
