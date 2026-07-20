@@ -40,10 +40,11 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const caseId = String(form.get('caseId') || '') || undefined;
   const checklistCode = String(form.get('checklistCode') || '') || undefined;
-  const label = String(form.get('label') || '') || undefined;
+  // Per-file display names, appended in the same order as the files.
+  const labels = form.getAll('label').map((value) => String(value));
 
   const saved = [];
-  for (const file of files) {
+  for (const [index, file] of files.entries()) {
     if (file.size > env.uploadMaxFileBytes) {
       return NextResponse.json(
         { ok: false, error: `הקובץ ${file.name} גדול מדי (מקסימום ${(env.uploadMaxFileBytes / 1024 / 1024).toFixed(0)}MB)` },
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       clientId,
       caseId,
       checklistCode,
-      label: files.length === 1 ? label : undefined,
+      label: labels[index]?.trim() || undefined,
       originalName: file.name,
       mimeType: file.type,
       buffer,

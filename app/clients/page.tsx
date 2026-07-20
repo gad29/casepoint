@@ -217,6 +217,7 @@ function ClientsPageInner() {
               </span>
               <span className="cli-meta">
                 <span dir="ltr">{client.phone}</span>
+                {client.idNumber && <span>· ת&quot;ז <span dir="ltr">{client.idNumber}</span></span>}
                 {client.city && <span>· {client.city}</span>}
                 <span>· {client.openCaseCount} תיקים פתוחים</span>
                 {client.missingItems > 0 && <span className="cli-missing">· {client.missingItems} מסמכים חסרים</span>}
