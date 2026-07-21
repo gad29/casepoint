@@ -13,6 +13,7 @@ import {
 } from '@/data/domain';
 import {
   caseVisibleTo,
+  deleteCase,
   getCase,
   getCaseFinance,
   getClient,
@@ -111,4 +112,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const updated = updateCase(caseId, body);
   if (!updated) return NextResponse.json({ ok: false, error: 'Case not found' }, { status: 404 });
   return NextResponse.json({ ok: true, data: updated });
+}
+
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  const auth = await getViewer();
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
+  if (auth.viewer.role !== 'admin') {
+    return NextResponse.json({ ok: false, error: 'רק מנהל יכול למחוק תיק' }, { status: 403 });
+  }
+  const { caseId } = await params;
+  const deleted = deleteCase(caseId);
+  if (!deleted) return NextResponse.json({ ok: false, error: 'Case not found' }, { status: 404 });
+  return NextResponse.json({ ok: true });
 }

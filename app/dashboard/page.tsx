@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import {
-  COMPANY_LABELS,
   countMissingItems,
   officeDisplayName,
-  STAGE_LABELS,
+  optionLabel,
+  stageLabelOf,
   TASK_PRIORITY_LABELS,
   type CaseStage,
   type TaskPriority,
@@ -13,6 +13,7 @@ import {
   assigneeContact,
   caseVisibleTo,
   getCaseFinance,
+  getConfig,
   getDashboardSummary,
   listActivity,
   listClients,
@@ -75,6 +76,7 @@ export default async function DashboardPage() {
   const session = await getCurrentSession();
   const viewer = session ? sessionToViewer(session) : ({ role: 'admin' } as const);
   const isAdmin = viewer.role === 'admin';
+  const config = getConfig();
 
   const summary = getDashboardSummary(isAdmin ? undefined : (c) => caseVisibleTo(c, viewer));
   const clients = listClients();
@@ -103,7 +105,7 @@ export default async function DashboardPage() {
         .slice(0, 5)
     : [];
 
-  const stageOrder = Object.keys(STAGE_LABELS) as CaseStage[];
+  const stageOrder = Object.keys(config.stageLabels) as CaseStage[];
 
   const priorityOrder: Record<TaskPriority, number> = { urgent: 0, high: 1, normal: 2 };
   const openTasks = listVisibleTasks(viewer)
@@ -196,7 +198,7 @@ export default async function DashboardPage() {
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <strong>{c.troubleFlag && '🚩 '}{c.clientName}</strong> · {c.title}
                     <span className="muted" style={{ display: 'block', fontSize: 12 }}>
-                      {c.company && c.company !== 'none' ? COMPANY_LABELS[c.company] : officeDisplayName(c)} · {STAGE_LABELS[c.stage]}
+                      {c.company && c.company !== 'none' ? optionLabel(config.companies, c.company, officeDisplayName(c)) : officeDisplayName(c)} · {stageLabelOf(config, c.stage)}
                       {c.troubleNote && ` · ${c.troubleNote}`}
                     </span>
                   </span>
@@ -266,7 +268,7 @@ export default async function DashboardPage() {
             </div>
             {stageOrder.map((stage) => (
               <div key={stage} className="split" style={{ padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
-                <span style={{ fontSize: 14 }}>{STAGE_LABELS[stage]}</span>
+                <span style={{ fontSize: 14 }}>{stageLabelOf(config, stage)}</span>
                 <strong>{summary.byStage[stage] ?? 0}</strong>
               </div>
             ))}

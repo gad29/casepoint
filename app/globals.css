@@ -1044,6 +1044,9 @@ code {
 .trouble-toggle { border-color: rgba(220, 38, 38, 0.4) !important; color: var(--danger) !important; }
 .trouble-toggle:hover:not(:disabled) { background: rgba(220, 38, 38, 0.06) !important; }
 
+.danger-btn { border-color: rgba(220, 38, 38, 0.4) !important; color: var(--danger) !important; }
+.danger-btn:hover:not(:disabled) { background: rgba(220, 38, 38, 0.08) !important; border-color: var(--danger) !important; }
+
 .decision-card { border-color: rgba(217, 119, 6, 0.35); }
 .decision-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0; }
 

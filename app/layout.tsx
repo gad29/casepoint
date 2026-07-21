@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Noto_Sans_Hebrew } from 'next/font/google';
 import './globals.css';
 import { RouteShell } from '@/components/route-shell';
+import { getConfig } from '@/lib/store';
 
 const sans = Noto_Sans_Hebrew({
   subsets: ['hebrew', 'latin'],
@@ -10,10 +11,13 @@ const sans = Noto_Sans_Hebrew({
   display: 'swap',
 });
 
-export const metadata: Metadata = {
-  title: 'CRM_YE',
-  description: 'ניהול תיקי לקוחות, מסמכים ותשלומים עבור מלווה בהגשות למשרדי ממשלה.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const config = getConfig();
+  return {
+    title: config.businessName || 'CRM_YE',
+    description: 'ניהול תיקי לקוחות, מסמכים ותשלומים עבור מלווה בהגשות למשרדי ממשלה.',
+  };
+}
 
 // Applies the saved theme before paint to avoid a light-mode flash.
 const themeInit = `(function(){try{var t=localStorage.getItem('crmye-theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();`;

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { TaskAlerts } from '@/components/task-alerts';
 import { Topbar } from '@/components/topbar';
+import { useConfig } from '@/components/config-provider';
 
 type AdminInfo = { email: string; name: string; role: 'admin' | 'worker'; authDisabled: boolean };
 
@@ -102,6 +103,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [admin, setAdmin] = useState<AdminInfo | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const config = useConfig();
 
   // Close the drawer whenever navigation happens.
   useEffect(() => {
@@ -136,10 +138,10 @@ export function AdminFrame({ children }: { children: ReactNode }) {
       {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
       <aside className={`sidebar sidebar-flex ${mobileOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <span className="sidebar-brand-mark">C</span>
+          <span className="sidebar-brand-mark">{(config.businessName || 'C')[0].toUpperCase()}</span>
           <div>
-            <div className="sidebar-brand-name">CRM_YE</div>
-            <div className="sidebar-brand-sub">ליווי תיקים מול משרדי ממשלה</div>
+            <div className="sidebar-brand-name">{config.businessName}</div>
+            <div className="sidebar-brand-sub">{config.sidebarSubtitle}</div>
           </div>
         </div>
 

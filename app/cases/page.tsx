@@ -6,12 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   CASE_KIND_LABELS,
   CASE_STAGES,
-  COMPANY_LABELS,
-  DEFAULT_CHECKLIST_CODES,
-  documentTemplates,
-  OFFICE_LABELS,
+  optionLabel,
   PAYMENT_STATUS_LABELS,
-  STAGE_LABELS,
+  stageLabelOf,
   isUnderInvestigation,
   type CaseKind,
   type CaseStage,
@@ -20,6 +17,7 @@ import {
   type InvestigationOutcome,
   type OperatingCompany,
 } from '@/data/domain';
+import { useConfig } from '@/components/config-provider';
 
 type CaseRow = {
   id: string;
@@ -70,18 +68,22 @@ function NewCaseForm({
   onClose: () => void;
   onCreated: (caseId: string) => void;
 }) {
+  const config = useConfig();
   const [form, setForm] = useState({
     clientId: initialClientId,
-    title: 'סיוע בשכר דירה',
+    title: config.defaultCaseTitle,
     office: 'housing-ministry' as GovernmentOffice,
     officeOther: '',
     description: '',
-    fee: '',
+    fee: config.defaultFee ? String(config.defaultFee) : '',
     nextAction: '',
-    company: 'milgam' as OperatingCompany,
+    company: (config.companies[0]?.value ?? 'none') as OperatingCompany,
     caseKind: 'new' as CaseKind,
   });
-  const [checklistCodes, setChecklistCodes] = useState<string[]>(DEFAULT_CHECKLIST_CODES);
+  const [useChecklist, setUseChecklist] = useState(config.seedChecklistByDefault);
+  const [checklistCodes, setChecklistCodes] = useState<string[]>(
+    config.seedChecklistByDefault ? config.documentTemplates.map((t) => t.code) : [],
+  );
   const [customItems, setCustomItems] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -90,7 +92,7 @@ function NewCaseForm({
     setChecklistCodes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
   }
 
-  const suggested = documentTemplates;
+  const suggested = config.documentTemplates;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -103,8 +105,8 @@ function NewCaseForm({
         body: JSON.stringify({
           ...form,
           fee: form.fee ? Number(form.fee) : 0,
-          checklistCodes,
-          customChecklist: customItems.split('\n').map((s) => s.trim()).filter(Boolean),
+          checklistCodes: useChecklist ? checklistCodes : [],
+          customChecklist: useChecklist ? customItems.split('\n').map((s) => s.trim()).filter(Boolean) : [],
         }),
       });
       const data = await res.json();
@@ -149,8 +151,8 @@ function NewCaseForm({
           <div className="field">
             <label>חברה מטפלת *</label>
             <select value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value as OperatingCompany })}>
-              {Object.entries(COMPANY_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+              {config.companies.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
           </div>
@@ -172,8 +174,8 @@ function NewCaseForm({
           <div className="field">
             <label>משרד ממשלתי</label>
             <select value={form.office} onChange={(e) => setForm({ ...form, office: e.target.value as GovernmentOffice })}>
-              {Object.entries(OFFICE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+              {config.offices.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
           </div>
@@ -197,28 +199,48 @@ function NewCaseForm({
           <textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
 
-        <div className="doc-group-title">מסמכים נדרשים לתיק</div>
-        <div className="choice-grid" style={{ marginBottom: 14 }}>
-          {suggested.map((template) => (
-            <label key={template.code} className={`choice-card ${checklistCodes.includes(template.code) ? 'selected' : ''}`}>
-              <input
-                type="checkbox"
-                checked={checklistCodes.includes(template.code)}
-                onChange={() => toggleCode(template.code)}
+        <div className="section-heading" style={{ marginTop: 6 }}>
+          <label className="choice-card" style={{ display: 'inline-flex', width: 'auto', padding: '8px 14px' }}>
+            <input type="checkbox" checked={useChecklist} onChange={(e) => setUseChecklist(e.target.checked)} />
+            <span>טען רשימת מסמכים נדרשים לתיק</span>
+          </label>
+          {useChecklist && suggested.length > 0 && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button type="button" className="doc-action-btn" onClick={() => setChecklistCodes(suggested.map((t) => t.code))}>בחר הכל</button>
+              <button type="button" className="doc-action-btn" onClick={() => setChecklistCodes([])}>נקה</button>
+            </div>
+          )}
+        </div>
+
+        {useChecklist ? (
+          <>
+            <div className="choice-grid" style={{ marginBottom: 14 }}>
+              {suggested.map((template) => (
+                <label key={template.code} className={`choice-card ${checklistCodes.includes(template.code) ? 'selected' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={checklistCodes.includes(template.code)}
+                    onChange={() => toggleCode(template.code)}
+                  />
+                  <span>{template.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="field">
+              <label>מסמכים נוספים (שורה לכל מסמך)</label>
+              <textarea
+                rows={2}
+                placeholder={'למשל:\nאישור רופא תעסוקתי\nצילום המחאה מבוטלת'}
+                value={customItems}
+                onChange={(e) => setCustomItems(e.target.value)}
               />
-              <span>{template.label}</span>
-            </label>
-          ))}
-        </div>
-        <div className="field">
-          <label>מסמכים נוספים (שורה לכל מסמך)</label>
-          <textarea
-            rows={2}
-            placeholder={'למשל:\nאישור רופא תעסוקתי\nצילום המחאה מבוטלת'}
-            value={customItems}
-            onChange={(e) => setCustomItems(e.target.value)}
-          />
-        </div>
+            </div>
+          </>
+        ) : (
+          <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
+            התיק ייפתח ללא רשימת מסמכים — אפשר להעלות מסמכים בחופשיות מדף התיק.
+          </p>
+        )}
 
         {error && <p className="form-error">{error}</p>}
         <button className="button" type="submit" disabled={saving}>
@@ -233,6 +255,7 @@ const BOARD_STAGES: CaseStage[] = CASE_STAGES.filter((s) => s !== 'closed');
 
 function KanbanBoard({ cases, onMove }: { cases: CaseRow[]; onMove: (caseId: string, stage: CaseStage) => void }) {
   const router = useRouter();
+  const config = useConfig();
   const [dragOver, setDragOver] = useState<CaseStage | null>(null);
 
   return (
@@ -256,7 +279,7 @@ function KanbanBoard({ cases, onMove }: { cases: CaseRow[]; onMove: (caseId: str
             }}
           >
             <div className="kanban-column-header">
-              <span>{STAGE_LABELS[stage]}</span>
+              <span>{stageLabelOf(config, stage)}</span>
               <span className="kanban-count">{columnCases.length}</span>
             </div>
             <div className="kanban-cards">
@@ -276,7 +299,7 @@ function KanbanBoard({ cases, onMove }: { cases: CaseRow[]; onMove: (caseId: str
                   </div>
                   <div className="kanban-card-sub">
                     <span>{c.title}</span>
-                    {c.company && c.company !== 'none' && <span>· {COMPANY_LABELS[c.company]}</span>}
+                    {c.company && c.company !== 'none' && <span>· {optionLabel(config.companies, c.company, '')}</span>}
                     {c.missingItems > 0 && <span className="cli-missing">· {c.missingItems} חסרים</span>}
                   </div>
                   {(c.assignedToName || c.openedByName) && (
@@ -314,6 +337,7 @@ function BoardViewIcon() {
 function CasesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const config = useConfig();
   const [cases, setCases] = useState<CaseRow[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -422,10 +446,10 @@ function CasesPageInner() {
                 {c.clientName} · {c.title}
                 {c.caseKind === 'renewal' && <span className="kind-badge">חידוש</span>}
               </span>
-              <span className="cli-stage">{STAGE_LABELS[c.stage]}</span>
+              <span className="cli-stage">{stageLabelOf(config, c.stage)}</span>
               <span className="cli-meta">
                 <span className="case-id-badge">{c.id}</span>
-                {c.company && c.company !== 'none' && <span>{COMPANY_LABELS[c.company]}</span>}
+                {c.company && c.company !== 'none' && <span>{optionLabel(config.companies, c.company, '')}</span>}
                 {(!c.company || c.company === 'none') && <span>{c.officeName}</span>}
                 {c.assignedToName && <span>· 👤 {c.assignedToName}</span>}
                 {!c.assignedToName && c.openedByName && <span>· 👤 {c.openedByName}</span>}

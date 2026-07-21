@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import type { ChecklistStatus } from '@/data/domain';
-import { addChecklistItem, caseVisibleTo, getCase, removeChecklistItem, updateChecklistItem } from '@/lib/store';
+import {
+  addChecklistItem,
+  caseVisibleTo,
+  clearChecklist,
+  getCase,
+  removeChecklistItems,
+  updateChecklistItem,
+} from '@/lib/store';
 import { getViewer } from '@/lib/viewer';
 
 type Params = { params: Promise<{ caseId: string }> };
@@ -45,12 +52,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true, data: item });
 }
 
+/**
+ * Delete checklist items. Supports:
+ *   ?code=X              single item
+ *   ?codes=X,Y,Z         several items at once
+ *   ?clear=1             the whole checklist
+ */
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { caseId } = await params;
   if (!(await guardCase(caseId))) return NextResponse.json({ ok: false, error: 'Case not found' }, { status: 404 });
-  const code = request.nextUrl.searchParams.get('code');
-  if (!code) return NextResponse.json({ ok: false, error: 'Missing checklist item code' }, { status: 400 });
-  const removed = removeChecklistItem(caseId, code);
-  if (!removed) return NextResponse.json({ ok: false, error: 'Checklist item not found' }, { status: 404 });
-  return NextResponse.json({ ok: true });
+
+  const params_ = request.nextUrl.searchParams;
+  if (params_.get('clear') === '1') {
+    const removed = clearChecklist(caseId);
+    return NextResponse.json({ ok: true, removed });
+  }
+
+  const codes = [
+    ...(params_.get('code') ? [params_.get('code') as string] : []),
+    ...(params_.get('codes') ? (params_.get('codes') as string).split(',').filter(Boolean) : []),
+  ];
+  if (!codes.length) return NextResponse.json({ ok: false, error: 'Missing checklist item code(s)' }, { status: 400 });
+
+  const removed = removeChecklistItems(caseId, codes);
+  if (!removed) return NextResponse.json({ ok: false, error: 'No matching checklist items' }, { status: 404 });
+  return NextResponse.json({ ok: true, removed });
 }

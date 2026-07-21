@@ -381,3 +381,58 @@ export function officeDisplayName(caseRecord: Pick<CaseRecord, 'office' | 'offic
   }
   return OFFICE_LABELS[caseRecord.office];
 }
+
+// ── Runtime configuration (editable in Settings, no code change needed) ──────
+
+export interface ConfigOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Everything an admin can edit at runtime from the Settings page.
+ * Defaults come from the constants above; saved overrides are merged on top.
+ */
+export interface AppConfig {
+  /** Branding shown in the sidebar and browser tab. */
+  businessName: string;
+  sidebarSubtitle: string;
+  /** Defaults used when opening a new case. */
+  defaultCaseTitle: string;
+  defaultFee: number;
+  /** When true, creating a client also opens a case automatically. */
+  autoCreateCaseOnClient: boolean;
+  /** When true, new cases start pre-loaded with the document checklist. */
+  seedChecklistByDefault: boolean;
+  companies: ConfigOption[];
+  documentTemplates: { code: string; label: string }[];
+  paymentMethods: ConfigOption[];
+  offices: ConfigOption[];
+  /** Editable Hebrew wording for each pipeline stage (keys are fixed). */
+  stageLabels: Record<string, string>;
+}
+
+export const DEFAULT_APP_CONFIG: AppConfig = {
+  businessName: 'CRM_YE',
+  sidebarSubtitle: 'ליווי תיקים מול משרדי ממשלה',
+  defaultCaseTitle: 'סיוע בשכר דירה',
+  defaultFee: 0,
+  autoCreateCaseOnClient: true,
+  seedChecklistByDefault: true,
+  companies: Object.entries(COMPANY_LABELS).map(([value, label]) => ({ value, label })),
+  documentTemplates: documentTemplates.map((t) => ({ code: t.code, label: t.label })),
+  paymentMethods: Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label })),
+  offices: Object.entries(OFFICE_LABELS).map(([value, label]) => ({ value, label })),
+  stageLabels: { ...STAGE_LABELS },
+};
+
+/** Look up a label in a config option list, falling back to the raw value. */
+export function optionLabel(options: ConfigOption[] | undefined, value?: string, fallback = '—') {
+  if (!value) return fallback;
+  return options?.find((o) => o.value === value)?.label ?? value;
+}
+
+/** Stage label from config, falling back to the built-in Hebrew label. */
+export function stageLabelOf(config: Pick<AppConfig, 'stageLabels'> | undefined, stage: string) {
+  return config?.stageLabels?.[stage] ?? STAGE_LABELS[stage as CaseStage] ?? stage;
+}

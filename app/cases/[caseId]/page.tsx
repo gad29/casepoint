@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { DocumentsPanel, type DocumentItem } from '@/components/documents-panel';
 import {
@@ -8,13 +9,11 @@ import {
   CASE_KIND_LABELS,
   CASE_STAGES,
   CHECKLIST_STATUS_LABELS,
-  COMPANY_LABELS,
   DECISION_LABELS,
   INVESTIGATION_OUTCOME_LABELS,
-  PAYMENT_METHOD_LABELS,
+  optionLabel,
   PAYMENT_STATUS_LABELS,
-  STAGE_LABELS,
-  documentTemplates,
+  stageLabelOf,
   isUnderInvestigation,
   type CaseKind,
   type CaseStage,
@@ -24,6 +23,7 @@ import {
   type OperatingCompany,
   type PaymentMethod,
 } from '@/data/domain';
+import { useConfig } from '@/components/config-provider';
 
 type CaseDetail = {
   case: {
@@ -82,6 +82,8 @@ const CHECKLIST_ACTIONS: Array<{ status: ChecklistStatus; label: string; classNa
 ];
 
 export default function CaseDetailPage({ params }: { params: Promise<{ caseId: string }> }) {
+  const router = useRouter();
+  const config = useConfig();
   const { caseId } = use(params);
   const [data, setData] = useState<CaseDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
   const [payForm, setPayForm] = useState({ amount: '', method: 'bank-transfer', note: '' });
   const [payError, setPayError] = useState('');
   const [uploadingCode, setUploadingCode] = useState<string | null>(null);
+  const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
   const checklistUploadRef = useRef<HTMLInputElement>(null);
   const uploadCodeRef = useRef<string | null>(null);
 
@@ -226,7 +229,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
   async function setStage(stage: CaseStage) {
     if (stage === caseRecord.stage) return;
-    if (!window.confirm(`לעדכן את שלב התיק ל"${STAGE_LABELS[stage]}"?`)) return;
+    if (!window.confirm(`לעדכן את שלב התיק ל"${stageLabelOf(config, stage)}"?`)) return;
     setSavingStage(true);
     try {
       await fetch(`/api/cases/${caseId}`, {
@@ -252,7 +255,39 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
   async function removeChecklistItem(code: string, label: string) {
     if (!window.confirm(`להסיר את "${label}" מרשימת המסמכים הנדרשים?`)) return;
     await fetch(`/api/cases/${caseId}/checklist?code=${encodeURIComponent(code)}`, { method: 'DELETE' });
+    setSelectedCodes((prev) => prev.filter((c) => c !== code));
     reload();
+  }
+
+  function toggleSelected(code: string) {
+    setSelectedCodes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+  }
+
+  async function removeSelected() {
+    if (!selectedCodes.length) return;
+    if (!window.confirm(`להסיר ${selectedCodes.length} מסמכים מהרשימה?`)) return;
+    await fetch(`/api/cases/${caseId}/checklist?codes=${selectedCodes.map(encodeURIComponent).join(',')}`, { method: 'DELETE' });
+    setSelectedCodes([]);
+    reload();
+  }
+
+  async function clearChecklist() {
+    if (!window.confirm('לרוקן את כל רשימת המסמכים הנדרשים בתיק זה? אפשר תמיד להעלות מסמכים בחופשיות.')) return;
+    await fetch(`/api/cases/${caseId}/checklist?clear=1`, { method: 'DELETE' });
+    setSelectedCodes([]);
+    reload();
+  }
+
+  async function deleteThisCase() {
+    if (!window.confirm(`למחוק את התיק "${caseRecord.title}"?\nכל המסמכים והתשלומים של התיק יימחקו לצמיתות.`)) return;
+    if (!window.confirm('אישור סופי — הפעולה בלתי הפיכה. למחוק?')) return;
+    const res = await fetch(`/api/cases/${caseId}`, { method: 'DELETE' });
+    if (res.ok) {
+      router.push(`/clients/${caseRecord.clientId}` as never);
+    } else {
+      const d = await res.json().catch(() => ({}));
+      window.alert(d.error || 'מחיקת התיק נכשלה');
+    }
   }
 
   async function addChecklistItem(event: React.FormEvent) {
@@ -316,7 +351,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
     reload();
   }
 
-  const availableTemplates = documentTemplates.filter(
+  const availableTemplates = config.documentTemplates.filter(
     (t) => !caseRecord.checklist.some((item) => item.code === t.code),
   );
   const checklistOptions = caseRecord.checklist
@@ -347,7 +382,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               </>
             )}
             {caseRecord.company && caseRecord.company !== 'none'
-              ? `${COMPANY_LABELS[caseRecord.company]} · ${caseRecord.officeName}`
+              ? `${optionLabel(config.companies, caseRecord.company, caseRecord.officeName)} · ${caseRecord.officeName}`
               : caseRecord.officeName}
             {caseRecord.referenceNumber && <> · מס׳ תיק במשרד: <span dir="ltr">{caseRecord.referenceNumber}</span></>}
           </p>
@@ -397,6 +432,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
             {PAYMENT_STATUS_LABELS[caseRecord.finance.status]}
             {caseRecord.finance.balance > 0 && ` · יתרה ${shekel(caseRecord.finance.balance)}`}
           </span>
+          {data.canAssign && (
+            <button type="button" className="button button-secondary button-compact danger-btn" onClick={deleteThisCase} title="מחיקת התיק">
+              🗑 מחק תיק
+            </button>
+          )}
         </div>
       </div>
 
@@ -411,10 +451,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                 onClick={() => setStage(stage)}
                 disabled={savingStage}
                 style={{ background: 'none', border: 'none', padding: 0 }}
-                title={`עבור לשלב: ${STAGE_LABELS[stage]}`}
+                title={`עבור לשלב: ${stageLabelOf(config, stage)}`}
               >
                 <span className="stage-dot" />
-                <span className="stage-label">{STAGE_LABELS[stage]}</span>
+                <span className="stage-label">{stageLabelOf(config, stage)}</span>
               </button>
             ))}
           </div>
@@ -436,7 +476,31 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                 {caseRecord.checklist.filter((i) => i.status !== 'not-applicable').length} התקבלו
               </span>
             </div>
-            {caseRecord.checklist.length === 0 && <p className="muted">אין פריטים ברשימה. הוסף מסמכים נדרשים למטה.</p>}
+            {caseRecord.checklist.length > 0 && (
+              <div className="split" style={{ marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <label className="muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedCodes.length === caseRecord.checklist.length}
+                    onChange={(e) => setSelectedCodes(e.target.checked ? caseRecord.checklist.map((i) => i.code) : [])}
+                  />
+                  בחר הכל
+                </label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {selectedCodes.length > 0 && (
+                    <button type="button" className="doc-action-btn reject" onClick={removeSelected}>
+                      🗑 הסר נבחרים ({selectedCodes.length})
+                    </button>
+                  )}
+                  <button type="button" className="doc-action-btn reject" onClick={clearChecklist}>
+                    נקה רשימה
+                  </button>
+                </div>
+              </div>
+            )}
+            {caseRecord.checklist.length === 0 && (
+              <p className="muted">אין רשימת מסמכים בתיק — אפשר להעלות מסמכים בחופשיות בכרטיס &quot;מסמכי התיק&quot;, או להוסיף פריטים לרשימה למטה.</p>
+            )}
             <input
               ref={checklistUploadRef}
               type="file"
@@ -446,6 +510,13 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
             />
             {caseRecord.checklist.map((item) => (
               <div key={item.code} className="doc-row">
+                <input
+                  type="checkbox"
+                  checked={selectedCodes.includes(item.code)}
+                  onChange={() => toggleSelected(item.code)}
+                  title="בחר להסרה מרובה"
+                  style={{ marginTop: 3 }}
+                />
                 <div className="doc-name">
                   {item.label}
                   {item.code === BLANK_CONTRACT_CODE && data.hasBlankContract && (
@@ -635,7 +706,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                   <span className="muted">עובד מטפל</span>
                   <strong>{caseRecord.assignedToName || caseRecord.openedByName || 'מנהל'}</strong>
                 </div>
-                <div className="review-row"><span className="muted">חברה מטפלת</span><strong>{COMPANY_LABELS[caseRecord.company || 'none']}</strong></div>
+                <div className="review-row"><span className="muted">חברה מטפלת</span><strong>{optionLabel(config.companies, caseRecord.company || 'none', '—')}</strong></div>
                 <div className="review-row"><span className="muted">סוג התיק</span><strong>{CASE_KIND_LABELS[caseRecord.caseKind || 'new']}</strong></div>
                 <div className="review-row"><span className="muted">שכר טרחה</span><strong>{shekel(caseRecord.fee)}</strong></div>
                 <div className="review-row"><span className="muted">שולם</span><strong>{shekel(caseRecord.finance.paid)}</strong></div>
@@ -652,8 +723,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                   <div className="field">
                     <label>חברה מטפלת</label>
                     <select value={detailsForm.company} onChange={(e) => setDetailsForm({ ...detailsForm, company: e.target.value })}>
-                      {Object.entries(COMPANY_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
+                      {config.companies.map((c) => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
                       ))}
                     </select>
                   </div>
@@ -692,7 +763,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               <ul className="list" style={{ marginBottom: 14 }}>
                 {data.payments.map((p) => (
                   <li key={p.id} className="split" style={{ fontSize: 13 }}>
-                    <span>{formatDate(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method]}{p.note ? ` · ${p.note}` : ''}</span>
+                    <span>{formatDate(p.paidAt)} · {optionLabel(config.paymentMethods, p.method, p.method)}{p.note ? ` · ${p.note}` : ''}</span>
                     <strong>{shekel(p.amount)}</strong>
                   </li>
                 ))}
@@ -713,8 +784,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
                 onChange={(e) => setPayForm({ ...payForm, method: e.target.value })}
                 style={{ flex: 1, minWidth: 130, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--line)' }}
               >
-                {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                {config.paymentMethods.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
               </select>
               <button className="button button-compact" type="submit">רשום תשלום</button>

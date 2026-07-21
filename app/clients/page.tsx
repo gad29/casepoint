@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CASE_KIND_LABELS, COMPANY_LABELS, type CaseKind, type OperatingCompany } from '@/data/domain';
+import { CASE_KIND_LABELS, type CaseKind, type OperatingCompany } from '@/data/domain';
+import { useConfig } from '@/components/config-provider';
 
 type ClientRow = {
   id: string;
@@ -25,8 +26,16 @@ function shekel(amount: number) {
 }
 
 function NewClientForm({ onCreated, onClose }: { onCreated: (caseId: string | null, clientId: string) => void; onClose: () => void }) {
+  const config = useConfig();
   const [form, setForm] = useState({ fullName: '', phone: '', idNumber: '', email: '', city: '', address: '', notes: '' });
-  const [caseForm, setCaseForm] = useState({ title: 'סיוע בשכר דירה', company: 'milgam' as OperatingCompany, caseKind: 'new' as CaseKind, fee: '' });
+  const [caseForm, setCaseForm] = useState({
+    title: config.defaultCaseTitle,
+    company: (config.companies[0]?.value ?? 'none') as OperatingCompany,
+    caseKind: 'new' as CaseKind,
+    fee: config.defaultFee ? String(config.defaultFee) : '',
+  });
+  const [openCase, setOpenCase] = useState(config.autoCreateCaseOnClient);
+  const [seedChecklist, setSeedChecklist] = useState(config.seedChecklistByDefault);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -44,12 +53,16 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (caseId: string | nu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
-          case: {
-            title: caseForm.title,
-            company: caseForm.company,
-            caseKind: caseForm.caseKind,
-            fee: caseForm.fee ? Number(caseForm.fee) : 0,
-          },
+          createCase: openCase,
+          case: openCase
+            ? {
+                title: caseForm.title,
+                company: caseForm.company,
+                caseKind: caseForm.caseKind,
+                fee: caseForm.fee ? Number(caseForm.fee) : 0,
+                seedChecklist,
+              }
+            : undefined,
         }),
       });
       const data = await res.json();
@@ -68,7 +81,7 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (caseId: string | nu
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="section-heading">
-        <h3 style={{ margin: 0 }}>לקוח חדש (נפתח אוטומטית תיק עם רשימת המסמכים המלאה)</h3>
+        <h3 style={{ margin: 0 }}>לקוח חדש</h3>
         <button type="button" className="doc-action-btn" onClick={onClose}>✕ סגור</button>
       </div>
       <form onSubmit={submit}>
@@ -103,7 +116,20 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (caseId: string | nu
           <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} />
         </div>
 
-        <div className="doc-group-title">פרטי התיק שייפתח</div>
+        <div className="section-heading" style={{ marginTop: 6 }}>
+          <label className="choice-card" style={{ display: 'inline-flex', width: 'auto', padding: '8px 14px' }}>
+            <input type="checkbox" checked={openCase} onChange={(e) => setOpenCase(e.target.checked)} />
+            <span>פתח תיק אוטומטית ללקוח</span>
+          </label>
+          {openCase && (
+            <label className="choice-card" style={{ display: 'inline-flex', width: 'auto', padding: '8px 14px' }}>
+              <input type="checkbox" checked={seedChecklist} onChange={(e) => setSeedChecklist(e.target.checked)} />
+              <span>טען רשימת מסמכים נדרשים</span>
+            </label>
+          )}
+        </div>
+
+        {openCase && (
         <div className="form-grid cols-2">
           <div className="field">
             <label>נושא התיק</label>
@@ -112,8 +138,8 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (caseId: string | nu
           <div className="field">
             <label>חברה מטפלת</label>
             <select value={caseForm.company} onChange={(e) => setCaseForm({ ...caseForm, company: e.target.value as OperatingCompany })}>
-              {Object.entries(COMPANY_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+              {config.companies.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
           </div>
@@ -137,10 +163,11 @@ function NewClientForm({ onCreated, onClose }: { onCreated: (caseId: string | nu
             <input type="number" min="0" value={caseForm.fee} onChange={(e) => setCaseForm({ ...caseForm, fee: e.target.value })} />
           </div>
         </div>
+        )}
 
         {error && <p className="form-error">{error}</p>}
         <button className="button" type="submit" disabled={saving}>
-          {saving ? 'שומר…' : 'שמור לקוח ופתח תיק'}
+          {saving ? 'שומר…' : openCase ? 'שמור לקוח ופתח תיק' : 'שמור לקוח'}
         </button>
       </form>
     </div>

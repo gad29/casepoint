@@ -4,6 +4,7 @@ import { countMissingItems } from '@/data/domain';
 import {
   caseVisibleTo,
   clientVisibleTo,
+  deleteClient,
   getCaseFinance,
   getClient,
   listActivity,
@@ -83,4 +84,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   });
   if (!updated) return NextResponse.json({ ok: false, error: 'Client not found' }, { status: 404 });
   return NextResponse.json({ ok: true, data: updated });
+}
+
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  const auth = await getViewer();
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
+  if (auth.viewer.role !== 'admin') {
+    return NextResponse.json({ ok: false, error: 'רק מנהל יכול למחוק לקוח' }, { status: 403 });
+  }
+  const { clientId } = await params;
+  const deleted = deleteClient(clientId);
+  if (!deleted) return NextResponse.json({ ok: false, error: 'Client not found' }, { status: 404 });
+  return NextResponse.json({ ok: true });
 }

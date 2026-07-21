@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import {
   countMissingItems,
   DECISION_LABELS,
+  DEFAULT_APP_CONFIG,
   documentTemplates,
   INVESTIGATION_OUTCOME_LABELS,
   LEGACY_STAGE_MAP,
@@ -12,6 +13,7 @@ import {
   STAGE_LABELS,
   type ActivityRecord,
   type AdminRecord,
+  type AppConfig,
   type CaseKind,
   type CaseRecord,
   type CaseStage,
@@ -197,6 +199,39 @@ export function updateClient(clientId: string, input: Partial<CreateClientInput>
   return updated;
 }
 
+/** Delete a client and everything belonging to them: cases, documents, payments, and their folder on disk. */
+export function deleteClient(clientId: string) {
+  const record = getClient(clientId);
+  if (!record) return false;
+
+  for (const c of listClientCases(clientId)) deleteCase(c.id);
+  for (const d of listClientDocuments(clientId)) deleteDocument(d.id);
+
+  const payments = listPayments();
+  const remaining = payments.filter((p) => p.clientId !== clientId);
+  if (remaining.length !== payments.length) writeJson(dbFile('payments'), remaining);
+
+  const tasks = listTasks();
+  let tasksChanged = false;
+  for (const t of tasks) {
+    if (t.clientId === clientId) {
+      t.clientId = undefined;
+      tasksChanged = true;
+    }
+  }
+  if (tasksChanged) writeJson(dbFile('tasks'), tasks);
+
+  try {
+    fs.rmSync(clientFolder(clientId), { recursive: true, force: true });
+  } catch {
+    /* folder may not exist */
+  }
+
+  writeJson(dbFile('clients'), listClients().filter((c) => c.id !== clientId));
+  logActivity({ type: 'client-deleted', summary: `נמחק לקוח: ${record.fullName}` });
+  return true;
+}
+
 // ── Cases ────────────────────────────────────────────────────────────────────
 
 export function listCases(): CaseRecord[] {
@@ -241,9 +276,9 @@ export function createCase(input: CreateCaseInput): CaseRecord | undefined {
 
   const checklist: ChecklistItem[] = [];
   for (const code of input.checklistCodes ?? []) {
-    const template = documentTemplates.find((t) => t.code === code);
-    if (template && !checklist.some((item) => item.code === template.code)) {
-      checklist.push({ code: template.code, label: template.label, status: 'missing', documentIds: [], updatedAt: nowIso() });
+    const label = templateLabel(code);
+    if (label && !checklist.some((item) => item.code === code)) {
+      checklist.push({ code, label, status: 'missing', documentIds: [], updatedAt: nowIso() });
     }
   }
   for (const label of input.customChecklist ?? []) {
@@ -438,10 +473,10 @@ export function addChecklistItem(caseId: string, label: string, code?: string) {
   if (index === -1) return undefined;
   const caseRecord = cases[index];
 
-  const template = code ? documentTemplates.find((t) => t.code === code) : undefined;
+  const tmplLabel = code ? templateLabel(code) : undefined;
   const item: ChecklistItem = {
-    code: template?.code ?? `custom-${crypto.randomUUID().slice(0, 8)}`,
-    label: template?.label ?? label.trim(),
+    code: code && tmplLabel ? code : `custom-${crypto.randomUUID().slice(0, 8)}`,
+    label: tmplLabel ?? label.trim(),
     status: 'missing',
     documentIds: [],
     updatedAt: nowIso(),
@@ -489,16 +524,66 @@ export function updateChecklistItem(
 }
 
 export function removeChecklistItem(caseId: string, code: string) {
+  return removeChecklistItems(caseId, [code]) > 0;
+}
+
+/** Remove several checklist items at once; returns how many were removed. */
+export function removeChecklistItems(caseId: string, codes: string[]) {
   const cases = listCases();
   const index = cases.findIndex((c) => c.id === caseId);
-  if (index === -1) return false;
+  if (index === -1) return 0;
+  const set = new Set(codes);
   const caseRecord = cases[index];
   const before = caseRecord.checklist.length;
-  caseRecord.checklist = caseRecord.checklist.filter((i) => i.code !== code);
-  if (caseRecord.checklist.length === before) return false;
-  caseRecord.updatedAt = nowIso();
-  cases[index] = caseRecord;
-  writeJson(dbFile('cases'), cases);
+  caseRecord.checklist = caseRecord.checklist.filter((i) => !set.has(i.code));
+  const removed = before - caseRecord.checklist.length;
+  if (removed > 0) {
+    caseRecord.updatedAt = nowIso();
+    cases[index] = caseRecord;
+    writeJson(dbFile('cases'), cases);
+    logActivity({ type: 'checklist-items-removed', clientId: caseRecord.clientId, caseId, summary: `הוסרו ${removed} מסמכים מרשימת התיק` });
+  }
+  return removed;
+}
+
+/** Empty the whole checklist of a case; returns how many were removed. */
+export function clearChecklist(caseId: string) {
+  const cases = listCases();
+  const index = cases.findIndex((c) => c.id === caseId);
+  if (index === -1) return 0;
+  const removed = cases[index].checklist.length;
+  if (removed > 0) {
+    cases[index].checklist = [];
+    cases[index].updatedAt = nowIso();
+    writeJson(dbFile('cases'), cases);
+    logActivity({ type: 'checklist-cleared', clientId: cases[index].clientId, caseId, summary: 'נוקתה רשימת המסמכים הנדרשים' });
+  }
+  return removed;
+}
+
+/** Delete a case and cascade: its documents (files + records), payments, task links. */
+export function deleteCase(caseId: string) {
+  const record = getCase(caseId);
+  if (!record) return false;
+
+  for (const doc of listCaseDocuments(caseId)) deleteDocument(doc.id);
+
+  const payments = listPayments();
+  const remainingPayments = payments.filter((p) => p.caseId !== caseId);
+  if (remainingPayments.length !== payments.length) writeJson(dbFile('payments'), remainingPayments);
+
+  const tasks = listTasks();
+  let tasksChanged = false;
+  for (const t of tasks) {
+    if (t.caseId === caseId) {
+      t.caseId = undefined;
+      tasksChanged = true;
+    }
+  }
+  if (tasksChanged) writeJson(dbFile('tasks'), tasks);
+
+  writeJson(dbFile('cases'), listCases().filter((c) => c.id !== caseId));
+  logActivity({ type: 'case-deleted', clientId: record.clientId, summary: `נמחק תיק "${record.title}"` });
   return true;
 }
 
@@ -1279,6 +1364,40 @@ export function getSettings(): AppSettings {
 
 function saveSettings(settings: AppSettings) {
   writeJson(dbFile('settings'), settings);
+}
+
+// ── App configuration (fully editable from the Settings page) ────────────────
+
+export function getConfig(): AppConfig {
+  const saved = readJson<Partial<AppConfig>>(dbFile('config'), {});
+  return {
+    ...DEFAULT_APP_CONFIG,
+    ...saved,
+    stageLabels: { ...DEFAULT_APP_CONFIG.stageLabels, ...(saved.stageLabels ?? {}) },
+    companies: saved.companies?.length ? saved.companies : DEFAULT_APP_CONFIG.companies,
+    documentTemplates: saved.documentTemplates?.length ? saved.documentTemplates : DEFAULT_APP_CONFIG.documentTemplates,
+    paymentMethods: saved.paymentMethods?.length ? saved.paymentMethods : DEFAULT_APP_CONFIG.paymentMethods,
+    offices: saved.offices?.length ? saved.offices : DEFAULT_APP_CONFIG.offices,
+  };
+}
+
+export function saveConfig(patch: Partial<AppConfig>): AppConfig {
+  const saved = readJson<Partial<AppConfig>>(dbFile('config'), {});
+  const next: Partial<AppConfig> = { ...saved, ...patch };
+  if (patch.stageLabels) {
+    next.stageLabels = { ...(saved.stageLabels ?? {}), ...patch.stageLabels };
+  }
+  writeJson(dbFile('config'), next);
+  logActivity({ type: 'config-updated', summary: 'עודכנו הגדרות המערכת' });
+  return getConfig();
+}
+
+/** Resolve a checklist-template label from config, falling back to the built-in list. */
+function templateLabel(code: string): string | undefined {
+  return (
+    getConfig().documentTemplates.find((t) => t.code === code)?.label ??
+    documentTemplates.find((t) => t.code === code)?.label
+  );
 }
 
 export function saveBlankContract(input: { originalName: string; mimeType: string; buffer: Buffer }) {

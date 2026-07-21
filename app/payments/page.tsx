@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, STAGE_LABELS, type CaseStage, type PaymentMethod } from '@/data/domain';
+import { optionLabel, PAYMENT_STATUS_LABELS, stageLabelOf, type CaseStage, type PaymentMethod } from '@/data/domain';
+import { useConfig } from '@/components/config-provider';
 
 type CaseRow = {
   id: string;
@@ -40,6 +41,7 @@ const FILTERS = [
 ] as const;
 
 export default function PaymentsPage() {
+  const config = useConfig();
   const [cases, setCases] = useState<CaseRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,7 +191,7 @@ export default function PaymentsPage() {
                       <Link className="text-link" href={`/cases/${c.id}` as never}>
                         {c.clientName} · {c.title}
                       </Link>
-                      <span className="muted" style={{ display: 'block', fontSize: 11 }}>{STAGE_LABELS[c.stage]}</span>
+                      <span className="muted" style={{ display: 'block', fontSize: 11 }}>{stageLabelOf(config, c.stage)}</span>
                     </td>
                     <td>{shekel(c.finance.fee)}</td>
                     <td>{shekel(c.finance.paid)}</td>
@@ -255,8 +257,8 @@ export default function PaymentsPage() {
                             onChange={(e) => setEditForm({ ...editForm, method: e.target.value })}
                             style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)' }}
                           >
-                            {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
-                              <option key={value} value={value}>{label}</option>
+                            {config.paymentMethods.map((m) => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
                             ))}
                           </select>
                         </td>
@@ -282,7 +284,7 @@ export default function PaymentsPage() {
                     <tr key={p.id}>
                       <td>{formatDate(p.paidAt)}</td>
                       <td><strong>{shekel(p.amount)}</strong>{p.note && <span className="muted" style={{ display: 'block', fontSize: 11 }}>{p.note}</span>}</td>
-                      <td>{PAYMENT_METHOD_LABELS[p.method]}</td>
+                      <td>{optionLabel(config.paymentMethods, p.method, p.method)}</td>
                       <td>
                         {relatedCase ? (
                           <Link className="text-link" href={`/cases/${relatedCase.id}` as never}>

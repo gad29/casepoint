@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { ConfigSettings } from '@/components/config-settings';
 
 type BlankContractMeta = { originalName: string; mimeType: string; uploadedAt: string } | null;
 
@@ -287,18 +288,41 @@ function ImportSection() {
   );
 }
 
+const SETTINGS_TABS = [
+  { id: 'system', label: 'הגדרות מערכת' },
+  { id: 'files', label: 'טפסים וייבוא' },
+] as const;
+
 export default function SettingsPage() {
+  const [tab, setTab] = useState<(typeof SETTINGS_TABS)[number]['id']>('system');
+
   return (
     <div>
       <div className="hero">
         <div>
           <p className="eyebrow">ניהול</p>
-          <h1 style={{ margin: '6px 0 4px' }}>הגדרות וייבוא</h1>
+          <h1 style={{ margin: '6px 0 4px' }}>הגדרות</h1>
+          <p className="muted" style={{ margin: 0 }}>התאמת המערכת — שמות, חברות, מסמכים, שלבים ועוד — בלי צורך בשינויי קוד.</p>
         </div>
       </div>
-      <div className="grid" style={{ maxWidth: 860 }}>
-        <BlankContractSection />
-        <ImportSection />
+
+      <div className="tab-bar">
+        {SETTINGS_TABS.map(({ id, label }) => (
+          <button key={id} type="button" className={`tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid" style={{ maxWidth: 900 }}>
+        {tab === 'system' ? (
+          <ConfigSettings />
+        ) : (
+          <>
+            <BlankContractSection />
+            <ImportSection />
+          </>
+        )}
       </div>
     </div>
   );

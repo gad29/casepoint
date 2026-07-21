@@ -1,15 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { use, useCallback, useEffect, useState } from 'react';
 import { DocumentsPanel, type DocumentItem } from '@/components/documents-panel';
 import {
-  PAYMENT_METHOD_LABELS,
+  optionLabel,
   PAYMENT_STATUS_LABELS,
-  STAGE_LABELS,
+  stageLabelOf,
   type CaseStage,
   type PaymentMethod,
 } from '@/data/domain';
+import { useConfig } from '@/components/config-provider';
 
 type ClientDetail = {
   client: {
@@ -61,6 +63,8 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id'];
 
 export default function ClientPage({ params }: { params: Promise<{ clientId: string }> }) {
+  const router = useRouter();
+  const config = useConfig();
   const { clientId } = use(params);
   const [data, setData] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,6 +106,19 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
 
   const { client, cases, documents, payments, activity } = data;
   const totalBalance = cases.reduce((sum, c) => sum + c.finance.balance, 0);
+  const canManage = data.canManagePayments;
+
+  async function deleteThisClient() {
+    if (!window.confirm(`למחוק את הלקוח "${client.fullName}"?\nכל התיקים, המסמכים והתשלומים שלו יימחקו לצמיתות.`)) return;
+    if (!window.confirm('אישור סופי — הפעולה בלתי הפיכה. למחוק לקוח וכל הנתונים שלו?')) return;
+    const res = await fetch(`/api/clients/${clientId}`, { method: 'DELETE' });
+    if (res.ok) {
+      router.push('/clients' as never);
+    } else {
+      const d = await res.json().catch(() => ({}));
+      window.alert(d.error || 'מחיקת הלקוח נכשלה');
+    }
+  }
 
   async function saveEdit(event: React.FormEvent) {
     event.preventDefault();
@@ -170,6 +187,11 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
         <div className="hero-actions">
           {totalBalance > 0 && <span className="badge warn">יתרה לתשלום: {shekel(totalBalance)}</span>}
           <Link className="button" href={`/cases?new=1&clientId=${clientId}` as never}>+ תיק חדש</Link>
+          {canManage && (
+            <button type="button" className="button button-secondary button-compact danger-btn" onClick={deleteThisClient} title="מחיקת הלקוח">
+              🗑 מחק לקוח
+            </button>
+          )}
         </div>
       </div>
 
@@ -191,7 +213,7 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
           {cases.map((c) => (
             <Link key={c.id} className={`case-list-item ${c.troubleFlag ? 'case-trouble' : ''}`} href={`/cases/${c.id}` as never}>
               <span className="cli-name">{c.troubleFlag && '🚩 '}{c.title}</span>
-              <span className="cli-stage">{STAGE_LABELS[c.stage]}</span>
+              <span className="cli-stage">{stageLabelOf(config, c.stage)}</span>
               <span className="cli-meta">
                 <span>{c.officeName}</span>
                 {(c.assignedToName || c.openedByName) && <span>· 👤 {c.assignedToName || c.openedByName}</span>}
@@ -231,7 +253,7 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
                     <tr key={p.id}>
                       <td>{formatDate(p.paidAt)}</td>
                       <td><strong>{shekel(p.amount)}</strong></td>
-                      <td>{PAYMENT_METHOD_LABELS[p.method]}</td>
+                      <td>{optionLabel(config.paymentMethods, p.method, p.method)}</td>
                       <td>{p.caseId ? cases.find((c) => c.id === p.caseId)?.title || p.caseId : '—'}</td>
                       <td>
                         <button type="button" className="doc-action-btn reject" onClick={() => deletePayment(p.id)}>מחק</button>
@@ -252,8 +274,8 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
               <div className="field">
                 <label>אמצעי תשלום</label>
                 <select value={payForm.method} onChange={(e) => setPayForm({ ...payForm, method: e.target.value })}>
-                  {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
+                  {config.paymentMethods.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
                   ))}
                 </select>
               </div>
