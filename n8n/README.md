@@ -28,6 +28,7 @@ CRM_YE שולח אירועים ל-n8n בכל פעולה משמעותית, ו-n8n
 | `crmye/payment-recorded` | תשלום נרשם |
 | `crmye/task-assigned` | משימה הוקצתה לעובד (כולל אימייל וטלפון של האחראי) |
 | `crmye/password-reset` | התבקש קוד איפוס סיסמה — לשליחה באימייל / SMS / וואטסאפ לפי `channel` |
+| `crmye/send-document` | שליחת מסמך ללקוח — קישור הורדה מאובטח (`link`, בתוקף 14 יום) לפי `channel` |
 | `crmye/meeting-request` | בקשת פגישה שנשלחה דרך `POST /api/webhooks/n8n` |
 
 ## קריאת נתונים (n8n → CRM_YE)
@@ -51,6 +52,7 @@ CRM_YE שולח אירועים ל-n8n בכל פעולה משמעותית, ו-n8n
 | `06-task-reminders.json` | **תזכורות משימות** — בדיקה כל 10 דקות ושליחה באימייל (Gmail) ו/או וואטסאפ (WhatsApp Business Cloud) לפי הערוצים שנבחרו במשימה |
 | `07-task-assigned-notification.json` | מייל אוטומטי לעובד כשמוקצית לו משימה |
 | `08-password-reset.json` | **שליחת קוד איפוס סיסמה** — ניתוב לפי הערוץ שנבחר: Gmail / Twilio SMS / WhatsApp |
+| `09-send-document.json` | **שליחת מסמך ללקוח** — קישור הורדה מאובטח בניתוב לפי ערוץ: Gmail / Twilio SMS / WhatsApp |
 
 הוורקפלואים הם תבניות: אחרי הייבוא יש להחליף `REPLACE_WITH_SPREADSHEET_ID` /
 `REPLACE_WITH_WHATSAPP_PHONE_NUMBER_ID`, לחבר Credentials (Gmail, Google Sheets,

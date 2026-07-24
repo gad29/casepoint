@@ -49,11 +49,12 @@ type CaseDetail = {
     assignedTo?: string;
     openedByName?: string;
     assignedToName?: string;
+    paymentStatusOverride?: 'paid' | 'partial' | 'unpaid';
     openedAt: string;
     submittedAt?: string;
     closedAt?: string;
     missingItems: number;
-    finance: { fee: number; paid: number; balance: number; status: 'paid' | 'partial' | 'unpaid' };
+    finance: { fee: number; paid: number; balance: number; status: 'paid' | 'partial' | 'unpaid'; overridden?: boolean };
   };
   client: { id: string; fullName: string; phone: string; email?: string } | null;
   documents: DocumentItem[];
@@ -94,6 +95,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
   const [editingDetails, setEditingDetails] = useState(false);
   const [payForm, setPayForm] = useState({ amount: '', method: 'bank-transfer', note: '' });
   const [payError, setPayError] = useState('');
+  const [editingFee, setEditingFee] = useState(false);
+  const [feeValue, setFeeValue] = useState('');
+  const [editingPayId, setEditingPayId] = useState<string | null>(null);
+  const [payEdit, setPayEdit] = useState({ amount: '', method: '' });
   const [uploadingCode, setUploadingCode] = useState<string | null>(null);
   const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
   const checklistUploadRef = useRef<HTMLInputElement>(null);
@@ -351,6 +356,50 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
     reload();
   }
 
+  async function saveFee() {
+    const fee = Number(feeValue);
+    if (!Number.isFinite(fee) || fee < 0) return;
+    await fetch(`/api/cases/${caseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fee }),
+    });
+    setEditingFee(false);
+    reload();
+  }
+
+  async function setPaymentOverride(value: 'paid' | 'unpaid' | 'auto') {
+    await fetch(`/api/cases/${caseId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentStatusOverride: value }),
+    });
+    reload();
+  }
+
+  function startEditPayment(p: { id: string; amount: number; method: string }) {
+    setEditingPayId(p.id);
+    setPayEdit({ amount: String(p.amount), method: p.method });
+  }
+
+  async function savePaymentEdit(paymentId: string) {
+    const amount = Number(payEdit.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    await fetch(`/api/payments/${paymentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount, method: payEdit.method }),
+    });
+    setEditingPayId(null);
+    reload();
+  }
+
+  async function deletePaymentRow(paymentId: string) {
+    if (!window.confirm('למחוק את התשלום?')) return;
+    await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' });
+    reload();
+  }
+
   const availableTemplates = config.documentTemplates.filter(
     (t) => !caseRecord.checklist.some((item) => item.code === t.code),
   );
@@ -603,6 +652,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
               caseId={caseId}
               documents={data.documents}
               checklistOptions={checklistOptions}
+              clientContact={data.client ? { email: data.client.email, phone: data.client.phone } : undefined}
               onChanged={reload}
             />
           </div>
@@ -753,18 +803,87 @@ export default function CaseDetailPage({ params }: { params: Promise<{ caseId: s
 
           {data.canManagePayments && (
           <div className="card">
-            <h3 style={{ marginTop: 0 }}>תשלומים לתיק</h3>
-            <div className="receipt-calc" style={{ marginTop: 0, marginBottom: 14 }}>
-              <div className="receipt-calc-row"><span>שכר טרחה</span><span>{shekel(caseRecord.finance.fee)}</span></div>
+            <div className="section-heading">
+              <h3 style={{ margin: 0 }}>תשלומים לתיק</h3>
+              <span className={`badge ${caseRecord.finance.status === 'paid' ? 'good' : caseRecord.finance.status === 'partial' ? 'warn' : 'danger'}`}>
+                {PAYMENT_STATUS_LABELS[caseRecord.finance.status]}{caseRecord.finance.overridden && ' (ידני)'}
+              </span>
+            </div>
+            <div className="receipt-calc" style={{ marginTop: 0, marginBottom: 12 }}>
+              <div className="receipt-calc-row" style={{ alignItems: 'center' }}>
+                <span>שכר טרחה (חוב)</span>
+                {editingFee ? (
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="number"
+                      min="0"
+                      value={feeValue}
+                      onChange={(e) => setFeeValue(e.target.value)}
+                      style={{ width: 100, padding: '4px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--text)' }}
+                    />
+                    <button type="button" className="doc-action-btn approve" onClick={saveFee}>✓</button>
+                    <button type="button" className="doc-action-btn" onClick={() => setEditingFee(false)}>✕</button>
+                  </span>
+                ) : (
+                  <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {shekel(caseRecord.finance.fee)}
+                    <button type="button" className="doc-action-btn" onClick={() => { setFeeValue(String(caseRecord.finance.fee)); setEditingFee(true); }}>ערוך</button>
+                  </span>
+                )}
+              </div>
               <div className="receipt-calc-row"><span>שולם</span><span>{shekel(caseRecord.finance.paid)}</span></div>
               <div className="receipt-calc-row total"><span>יתרה</span><span>{shekel(caseRecord.finance.balance)}</span></div>
             </div>
+
+            <div className="split" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 6 }}>
+              <span className="muted" style={{ fontSize: 12 }}>סימון סטטוס:</span>
+              <div className="language-switch">
+                <button type="button" className={`language-option ${caseRecord.paymentStatusOverride === 'paid' ? 'active' : ''}`} onClick={() => setPaymentOverride('paid')}>שולם</button>
+                <button type="button" className={`language-option ${caseRecord.paymentStatusOverride === 'unpaid' ? 'active' : ''}`} onClick={() => setPaymentOverride('unpaid')}>לא שולם</button>
+                <button type="button" className={`language-option ${!caseRecord.paymentStatusOverride ? 'active' : ''}`} onClick={() => setPaymentOverride('auto')}>אוטומטי</button>
+              </div>
+            </div>
+
             {data.payments.length > 0 && (
               <ul className="list" style={{ marginBottom: 14 }}>
                 {data.payments.map((p) => (
-                  <li key={p.id} className="split" style={{ fontSize: 13 }}>
-                    <span>{formatDate(p.paidAt)} · {optionLabel(config.paymentMethods, p.method, p.method)}{p.note ? ` · ${p.note}` : ''}</span>
-                    <strong>{shekel(p.amount)}</strong>
+                  <li key={p.id} className="split" style={{ fontSize: 13, gap: 8 }}>
+                    {editingPayId === p.id ? (
+                      <>
+                        <span style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={payEdit.amount}
+                            onChange={(e) => setPayEdit({ ...payEdit, amount: e.target.value })}
+                            style={{ width: 90, padding: '4px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--text)' }}
+                          />
+                          <select
+                            value={payEdit.method}
+                            onChange={(e) => setPayEdit({ ...payEdit, method: e.target.value })}
+                            style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--text)' }}
+                          >
+                            {config.paymentMethods.map((m) => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                        </span>
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          <button type="button" className="doc-action-btn approve" onClick={() => savePaymentEdit(p.id)}>✓ שמור</button>
+                          <button type="button" className="doc-action-btn" onClick={() => setEditingPayId(null)}>ביטול</button>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{formatDate(p.paidAt)} · {optionLabel(config.paymentMethods, p.method, p.method)}{p.note ? ` · ${p.note}` : ''}</span>
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <strong>{shekel(p.amount)}</strong>
+                          <button type="button" className="doc-action-btn" onClick={() => startEditPayment(p)}>ערוך</button>
+                          <button type="button" className="doc-action-btn reject" onClick={() => deletePaymentRow(p.id)}>✕</button>
+                        </span>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

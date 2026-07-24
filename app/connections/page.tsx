@@ -12,6 +12,7 @@ const EVENTS = [
   { path: 'crmye/payment-recorded', description: 'תשלום נרשם — הפקת קבלה, עדכון גיליון הכנסות' },
   { path: 'crmye/task-assigned', description: 'משימה הוקצתה לעובד — מייל אוטומטי לעובד' },
   { path: 'crmye/password-reset', description: 'קוד איפוס סיסמה — נשלח באימייל / SMS / וואטסאפ לפי בחירת המשתמש' },
+  { path: 'crmye/send-document', description: 'שליחת מסמך ללקוח — קישור מאובטח באימייל / וואטסאפ / SMS (וורקפלואו 09)' },
   { path: 'crmye/meeting-request', description: 'בקשת פגישה (נשלח ידנית/מסוכן AI) — קביעת פגישה ביומן גוגל' },
   { path: 'crmye/daily-summary', description: 'סיכום יומי (מופעל מתוזמן ב-n8n שקורא מ-GET /api/summary)' },
 ];

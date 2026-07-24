@@ -995,6 +995,21 @@ code {
 .doc-action-btn.reject:hover { border-color: var(--danger); color: var(--danger); background: rgba(220, 38, 38, 0.05); }
 .doc-action-btn.resubmit:hover { border-color: var(--warn); color: var(--warn); background: rgba(217, 119, 6, 0.05); }
 
+.doc-action-btn.active-send { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+
+.send-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin: 2px 0 8px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  animation: fadeUp 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .doc-file-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 
 .doc-file-chip {

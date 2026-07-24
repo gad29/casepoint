@@ -23,6 +23,8 @@ type Props = {
   caseId?: string;
   /** Checklist items available for linking an upload (case page). */
   checklistOptions?: { code: string; label: string }[];
+  /** Client contact — enables the "send to client" channels. */
+  clientContact?: { email?: string; phone?: string };
   onChanged: () => void;
 };
 
@@ -61,7 +63,7 @@ export function isEditableDocument(doc: Pick<DocumentItem, 'mimeType' | 'origina
   );
 }
 
-export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, onChanged }: Props) {
+export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, clientContact, onChanged }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -70,6 +72,37 @@ export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, 
   const [checklistCode, setChecklistCode] = useState('');
   const [newItemName, setNewItemName] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [sendOpen, setSendOpen] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sentNote, setSentNote] = useState<string | null>(null);
+
+  const canEmail = Boolean(clientContact?.email);
+  const canPhone = Boolean(clientContact?.phone);
+  const canSend = canEmail || canPhone;
+
+  async function sendDocument(docId: string, channel: 'email' | 'whatsapp' | 'sms') {
+    setSending(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/documents/${docId}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.error || 'שליחת המסמך נכשלה');
+        return;
+      }
+      setSendOpen(null);
+      setSentNote(docId);
+      setTimeout(() => setSentNote((v) => (v === docId ? null : v)), 3000);
+    } catch {
+      setError('שגיאת תקשורת בשליחה');
+    } finally {
+      setSending(false);
+    }
+  }
 
   function stageFiles(files: FileList | File[]) {
     const list = Array.from(files);
@@ -273,33 +306,68 @@ export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, 
       ) : (
         <div style={{ marginTop: 16 }}>
           {documents.map((doc) => (
-            <div key={doc.id} className="doc-row">
-              <span style={{ fontSize: 20 }}>{fileEmoji(doc.mimeType, doc.originalName)}</span>
-              <div className="doc-name">
-                <a href={`/api/documents/${doc.id}`} target="_blank" rel="noreferrer" className="text-link">
-                  {doc.label || doc.originalName}
-                </a>
-                <span className="muted" style={{ display: 'block', fontSize: 11 }}>
-                  {formatSize(doc.size)} · {formatDate(doc.uploadedAt)}
-                  {doc.editedFromId && ' · גרסה ערוכה'}
-                </span>
+            <div key={doc.id}>
+              <div className="doc-row">
+                <span style={{ fontSize: 20 }}>{fileEmoji(doc.mimeType, doc.originalName)}</span>
+                <div className="doc-name">
+                  <a href={`/api/documents/${doc.id}`} target="_blank" rel="noreferrer" className="text-link">
+                    {doc.label || doc.originalName}
+                  </a>
+                  <span className="muted" style={{ display: 'block', fontSize: 11 }}>
+                    {formatSize(doc.size)} · {formatDate(doc.uploadedAt)}
+                    {doc.editedFromId && ' · גרסה ערוכה'}
+                    {sentNote === doc.id && <span className="text-feedback-success" style={{ fontWeight: 600 }}> · ✓ נשלח ללקוח</span>}
+                  </span>
+                </div>
+                <div className="doc-actions">
+                  {isEditableDocument(doc) && (
+                    <Link className="doc-action-btn approve" href={`/documents/${doc.id}/edit` as never}>
+                      ✏️ עריכה
+                    </Link>
+                  )}
+                  {canSend && (
+                    <button
+                      type="button"
+                      className={`doc-action-btn ${sendOpen === doc.id ? 'active-send' : ''}`}
+                      onClick={() => setSendOpen((v) => (v === doc.id ? null : doc.id))}
+                      title="שליחת המסמך ללקוח בקישור מאובטח"
+                    >
+                      📤 שלח ללקוח
+                    </button>
+                  )}
+                  <a className="doc-action-btn" href={`/api/documents/${doc.id}?download=1`}>
+                    ⬇ הורדה
+                  </a>
+                  <button type="button" className="doc-action-btn" disabled={busy === doc.id} onClick={() => renameDocument(doc)}>
+                    שינוי שם
+                  </button>
+                  <button type="button" className="doc-action-btn reject" disabled={busy === doc.id} onClick={() => deleteDocument(doc)}>
+                    מחיקה
+                  </button>
+                </div>
               </div>
-              <div className="doc-actions">
-                {isEditableDocument(doc) && (
-                  <Link className="doc-action-btn approve" href={`/documents/${doc.id}/edit` as never}>
-                    ✏️ עריכה
-                  </Link>
-                )}
-                <a className="doc-action-btn" href={`/api/documents/${doc.id}?download=1`}>
-                  ⬇ הורדה
-                </a>
-                <button type="button" className="doc-action-btn" disabled={busy === doc.id} onClick={() => renameDocument(doc)}>
-                  שינוי שם
-                </button>
-                <button type="button" className="doc-action-btn reject" disabled={busy === doc.id} onClick={() => deleteDocument(doc)}>
-                  מחיקה
-                </button>
-              </div>
+              {sendOpen === doc.id && (
+                <div className="send-picker">
+                  <span className="muted" style={{ fontSize: 12 }}>שליחת קישור ל&quot;{doc.label || doc.originalName}&quot; דרך:</span>
+                  {canEmail && (
+                    <button type="button" className="doc-action-btn approve" disabled={sending} onClick={() => sendDocument(doc.id, 'email')}>
+                      📧 אימייל
+                    </button>
+                  )}
+                  {canPhone && (
+                    <button type="button" className="doc-action-btn approve" disabled={sending} onClick={() => sendDocument(doc.id, 'whatsapp')}>
+                      💬 וואטסאפ
+                    </button>
+                  )}
+                  {canPhone && (
+                    <button type="button" className="doc-action-btn approve" disabled={sending} onClick={() => sendDocument(doc.id, 'sms')}>
+                      📱 SMS
+                    </button>
+                  )}
+                  <button type="button" className="doc-action-btn" onClick={() => setSendOpen(null)}>ביטול</button>
+                  {sending && <span className="muted" style={{ fontSize: 12 }}>שולח…</span>}
+                </div>
+              )}
             </div>
           ))}
         </div>

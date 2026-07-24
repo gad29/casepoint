@@ -227,7 +227,7 @@ export default function ClientPage({ params }: { params: Promise<{ clientId: str
 
       {tab === 'documents' && (
         <div className="card">
-          <DocumentsPanel clientId={clientId} documents={documents} onChanged={reload} />
+          <DocumentsPanel clientId={clientId} documents={documents} clientContact={{ email: client.email, phone: client.phone }} onChanged={reload} />
         </div>
       )}
 

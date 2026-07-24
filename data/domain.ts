@@ -225,6 +225,8 @@ export interface CaseRecord {
   decisionStatus?: DecisionStatus;
   /** Outcome when decisionStatus === 'investigation'. */
   investigationOutcome?: InvestigationOutcome;
+  /** Manual override for the payment status; when unset, status is computed from fee vs payments. */
+  paymentStatusOverride?: PaymentStatus;
   openedAt: string;
   submittedAt?: string;
   decisionAt?: string;

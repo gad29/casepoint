@@ -10,6 +10,7 @@ import {
   LEGACY_STAGE_MAP,
   officeDisplayName,
   OPEN_STAGES,
+  PAYMENT_STATUS_LABELS,
   STAGE_LABELS,
   type ActivityRecord,
   type AdminRecord,
@@ -35,6 +36,7 @@ import {
 } from '@/data/domain';
 import { env } from '@/lib/env';
 import { triggerN8n } from '@/lib/n8n';
+import { signDocumentShareToken } from '@/lib/share';
 
 const appRoot = process.cwd();
 
@@ -352,6 +354,8 @@ export interface UpdateCaseInput {
   investigationOutcome?: InvestigationOutcome | '';
   /** Worker id to assign the case to; empty string clears the assignment. */
   assignedTo?: string;
+  /** 'paid' | 'partial' | 'unpaid' to force a status; 'auto' or '' clears back to computed. */
+  paymentStatusOverride?: PaymentStatus | 'auto' | '';
 }
 
 export function updateCase(caseId: string, input: UpdateCaseInput) {
@@ -371,6 +375,12 @@ export function updateCase(caseId: string, input: UpdateCaseInput) {
   }
   if (input.investigationOutcome === '') {
     updated.investigationOutcome = undefined;
+  }
+  if (input.paymentStatusOverride !== undefined) {
+    updated.paymentStatusOverride =
+      input.paymentStatusOverride === 'auto' || input.paymentStatusOverride === ''
+        ? undefined
+        : input.paymentStatusOverride;
   }
   // A direct approval clears any previous investigation outcome.
   if (input.decisionStatus === 'approved') {
@@ -441,6 +451,18 @@ export function updateCase(caseId: string, input: UpdateCaseInput) {
       title: updated.title,
       decisionStatus: updated.decisionStatus || '',
       investigationOutcome: updated.investigationOutcome || '',
+    });
+  }
+
+  if (input.paymentStatusOverride !== undefined && current.paymentStatusOverride !== updated.paymentStatusOverride) {
+    const label = updated.paymentStatusOverride
+      ? PAYMENT_STATUS_LABELS[updated.paymentStatusOverride]
+      : 'אוטומטי (לפי תשלומים)';
+    logActivity({
+      type: 'case-payment-status',
+      clientId: updated.clientId,
+      caseId,
+      summary: `סטטוס התשלום של "${updated.title}" עודכן ידנית ל: ${label}`,
     });
   }
 
@@ -743,6 +765,52 @@ export function readDocumentFile(record: Pick<DocumentRecord, 'clientId' | 'file
   return fs.readFileSync(filePath);
 }
 
+export type SendChannel = 'email' | 'whatsapp' | 'sms';
+
+/**
+ * Send a document to its client as a secure, expiring download link via n8n.
+ * Returns the generated link on success.
+ */
+export async function sendDocumentLink(documentId: string, channel: SendChannel) {
+  const doc = getDocument(documentId);
+  if (!doc) return { ok: false as const, error: 'המסמך לא נמצא' };
+  const client = getClient(doc.clientId);
+  if (!client) return { ok: false as const, error: 'הלקוח לא נמצא' };
+
+  if (channel === 'email' && !client.email) return { ok: false as const, error: 'ללקוח אין כתובת אימייל' };
+  if ((channel === 'whatsapp' || channel === 'sms') && !client.phone) {
+    return { ok: false as const, error: 'ללקוח אין מספר טלפון' };
+  }
+
+  const token = signDocumentShareToken(documentId, 14);
+  const link = `${env.appBaseUrl.replace(/\/$/, '')}/api/share/${token}`;
+  const docName = doc.label || doc.originalName;
+
+  logActivity({
+    type: 'document-sent',
+    clientId: doc.clientId,
+    caseId: doc.caseId,
+    summary: `נשלח מסמך "${docName}" ל${client.fullName} דרך ${REMINDER_LABEL[channel]}`,
+  });
+
+  const result = await fireEvent('send-document', {
+    documentId,
+    channel,
+    clientName: client.fullName,
+    clientEmail: client.email || '',
+    clientPhone: client.phone || '',
+    fileName: doc.originalName,
+    documentLabel: docName,
+    link,
+    expiresInDays: 14,
+    businessName: getConfig().businessName,
+  });
+  if (!result.ok) return { ok: false as const, error: 'שליחת ההודעה דרך n8n נכשלה' };
+  return { ok: true as const, link };
+}
+
+const REMINDER_LABEL: Record<SendChannel, string> = { email: 'אימייל', whatsapp: 'וואטסאפ', sms: 'SMS' };
+
 // ── Payments ─────────────────────────────────────────────────────────────────
 
 export function listPayments(): PaymentRecord[] {
@@ -861,14 +929,31 @@ export interface CaseFinance {
   paid: number;
   balance: number;
   status: PaymentStatus;
+  /** True when the status was set manually rather than computed from payments. */
+  overridden: boolean;
 }
 
-export function getCaseFinance(caseRecord: Pick<CaseRecord, 'id' | 'fee'>, payments?: PaymentRecord[]): CaseFinance {
+export function getCaseFinance(
+  caseRecord: Pick<CaseRecord, 'id' | 'fee' | 'paymentStatusOverride'>,
+  payments?: PaymentRecord[],
+): CaseFinance {
   const casePayments = (payments ?? listPayments()).filter((p) => p.caseId === caseRecord.id);
   const paid = casePayments.reduce((sum, p) => sum + p.amount, 0);
-  const balance = Math.max(0, Math.round((caseRecord.fee - paid) * 100) / 100);
-  const status: PaymentStatus = caseRecord.fee <= 0 && paid <= 0 ? 'unpaid' : paid <= 0 ? 'unpaid' : paid < caseRecord.fee ? 'partial' : 'paid';
-  return { caseId: caseRecord.id, fee: caseRecord.fee, paid, balance, status };
+  let balance = Math.max(0, Math.round((caseRecord.fee - paid) * 100) / 100);
+  let status: PaymentStatus =
+    caseRecord.fee <= 0 && paid <= 0 ? 'unpaid' : paid <= 0 ? 'unpaid' : paid < caseRecord.fee ? 'partial' : 'paid';
+
+  const override = caseRecord.paymentStatusOverride;
+  if (override === 'paid') {
+    status = 'paid';
+    balance = 0;
+  } else if (override === 'unpaid') {
+    status = 'unpaid';
+  } else if (override === 'partial') {
+    status = 'partial';
+  }
+
+  return { caseId: caseRecord.id, fee: caseRecord.fee, paid, balance, status, overridden: Boolean(override) };
 }
 
 export function getDashboardSummary(caseFilter?: (caseRecord: CaseRecord) => boolean) {

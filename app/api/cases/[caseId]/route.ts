@@ -93,6 +93,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     decisionStatus?: DecisionStatus;
     investigationOutcome?: InvestigationOutcome | '';
     assignedTo?: string;
+    paymentStatusOverride?: 'paid' | 'partial' | 'unpaid' | 'auto' | '';
   };
   try {
     body = await request.json();

@@ -8,6 +8,8 @@ function isPublicPath(pathname: string) {
   if (pathname === '/login' || pathname === '/forgot') return true;
   if (pathname === '/api/auth/login' || pathname === '/api/auth/me') return true;
   if (pathname === '/api/auth/forgot' || pathname === '/api/auth/reset') return true;
+  // Shared document links are token-protected inside the route.
+  if (pathname.startsWith('/api/share/')) return true;
   return false;
 }
 
