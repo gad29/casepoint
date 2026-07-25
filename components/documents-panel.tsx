@@ -75,33 +75,52 @@ export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, 
   const [sendOpen, setSendOpen] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sentNote, setSentNote] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bundleOpen, setBundleOpen] = useState(false);
+  const [bundleSent, setBundleSent] = useState(false);
 
   const canEmail = Boolean(clientContact?.email);
   const canPhone = Boolean(clientContact?.phone);
   const canSend = canEmail || canPhone;
 
-  async function sendDocument(docId: string, channel: 'email' | 'whatsapp' | 'sms') {
+  function toggleSelected(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  /** Send a set of documents as a single link. */
+  async function sendDocuments(documentIds: string[], channel: 'email' | 'whatsapp' | 'sms', kind: 'single' | 'bundle') {
     setSending(true);
     setError('');
     try {
-      const res = await fetch(`/api/documents/${docId}/send`, {
+      const res = await fetch('/api/documents/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel }),
+        body: JSON.stringify({ documentIds, channel }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        setError(data.error || 'שליחת המסמך נכשלה');
+        setError(data.error || 'שליחת המסמכים נכשלה');
         return;
       }
-      setSendOpen(null);
-      setSentNote(docId);
-      setTimeout(() => setSentNote((v) => (v === docId ? null : v)), 3000);
+      if (kind === 'single') {
+        setSendOpen(null);
+        setSentNote(documentIds[0]);
+        setTimeout(() => setSentNote((v) => (v === documentIds[0] ? null : v)), 3000);
+      } else {
+        setBundleOpen(false);
+        setSelected([]);
+        setBundleSent(true);
+        setTimeout(() => setBundleSent(false), 3500);
+      }
     } catch {
       setError('שגיאת תקשורת בשליחה');
     } finally {
       setSending(false);
     }
+  }
+
+  function sendDocument(docId: string, channel: 'email' | 'whatsapp' | 'sms') {
+    return sendDocuments([docId], channel, 'single');
   }
 
   function stageFiles(files: FileList | File[]) {
@@ -305,9 +324,55 @@ export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, 
         <p className="muted" style={{ marginTop: 16 }}>אין עדיין מסמכים בתיקייה.</p>
       ) : (
         <div style={{ marginTop: 16 }}>
+          {canSend && documents.length > 1 && (
+            <div className="split" style={{ marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+              <label className="muted" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={selected.length === documents.length && documents.length > 0}
+                  onChange={(e) => setSelected(e.target.checked ? documents.map((d) => d.id) : [])}
+                />
+                בחר הכל
+              </label>
+              {selected.length > 0 && (
+                <button
+                  type="button"
+                  className={`doc-action-btn approve ${bundleOpen ? 'active-send' : ''}`}
+                  onClick={() => setBundleOpen((v) => !v)}
+                >
+                  📤 שלח {selected.length} מסמכים בקישור אחד
+                </button>
+              )}
+              {bundleSent && <span className="text-feedback-success" style={{ fontWeight: 600, fontSize: 13 }}>✓ נשלח קישור ללקוח</span>}
+            </div>
+          )}
+          {bundleOpen && selected.length > 0 && (
+            <div className="send-picker" style={{ marginBottom: 12 }}>
+              <span className="muted" style={{ fontSize: 12 }}>שליחת קישור אחד ל-{selected.length} מסמכים דרך:</span>
+              {canEmail && (
+                <button type="button" className="doc-action-btn approve" disabled={sending} onClick={() => sendDocuments(selected, 'email', 'bundle')}>📧 אימייל</button>
+              )}
+              {canPhone && (
+                <button type="button" className="doc-action-btn approve" disabled={sending} onClick={() => sendDocuments(selected, 'whatsapp', 'bundle')}>💬 וואטסאפ</button>
+              )}
+              {canPhone && (
+                <button type="button" className="doc-action-btn approve" disabled={sending} onClick={() => sendDocuments(selected, 'sms', 'bundle')}>📱 SMS</button>
+              )}
+              <button type="button" className="doc-action-btn" onClick={() => setBundleOpen(false)}>ביטול</button>
+              {sending && <span className="muted" style={{ fontSize: 12 }}>שולח…</span>}
+            </div>
+          )}
           {documents.map((doc) => (
             <div key={doc.id}>
               <div className="doc-row">
+                {canSend && documents.length > 1 && (
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(doc.id)}
+                    onChange={() => toggleSelected(doc.id)}
+                    title="בחר לשליחה בקישור אחד"
+                  />
+                )}
                 <span style={{ fontSize: 20 }}>{fileEmoji(doc.mimeType, doc.originalName)}</span>
                 <div className="doc-name">
                   <a href={`/api/documents/${doc.id}`} target="_blank" rel="noreferrer" className="text-link">

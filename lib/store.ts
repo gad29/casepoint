@@ -36,7 +36,7 @@ import {
 } from '@/data/domain';
 import { env } from '@/lib/env';
 import { triggerN8n } from '@/lib/n8n';
-import { signDocumentShareToken } from '@/lib/share';
+import { signShareToken } from '@/lib/share';
 
 const appRoot = process.cwd();
 
@@ -768,13 +768,22 @@ export function readDocumentFile(record: Pick<DocumentRecord, 'clientId' | 'file
 export type SendChannel = 'email' | 'whatsapp' | 'sms';
 
 /**
- * Send a document to its client as a secure, expiring download link via n8n.
+ * Send one or more documents to their client as a single secure, expiring
+ * download link via n8n. All documents must belong to the same client.
  * Returns the generated link on success.
  */
-export async function sendDocumentLink(documentId: string, channel: SendChannel) {
-  const doc = getDocument(documentId);
-  if (!doc) return { ok: false as const, error: 'המסמך לא נמצא' };
-  const client = getClient(doc.clientId);
+export async function sendDocumentsLink(documentIds: string[], channel: SendChannel) {
+  const ids = Array.from(new Set(documentIds.filter(Boolean)));
+  if (!ids.length) return { ok: false as const, error: 'לא נבחרו מסמכים' };
+
+  const docs = ids.map((id) => getDocument(id)).filter((d): d is DocumentRecord => Boolean(d));
+  if (!docs.length) return { ok: false as const, error: 'המסמכים לא נמצאו' };
+
+  const clientId = docs[0].clientId;
+  if (docs.some((d) => d.clientId !== clientId)) {
+    return { ok: false as const, error: 'לא ניתן לשלוח מסמכים של לקוחות שונים בקישור אחד' };
+  }
+  const client = getClient(clientId);
   if (!client) return { ok: false as const, error: 'הלקוח לא נמצא' };
 
   if (channel === 'email' && !client.email) return { ok: false as const, error: 'ללקוח אין כתובת אימייל' };
@@ -782,31 +791,38 @@ export async function sendDocumentLink(documentId: string, channel: SendChannel)
     return { ok: false as const, error: 'ללקוח אין מספר טלפון' };
   }
 
-  const token = signDocumentShareToken(documentId, 14);
+  const token = signShareToken(docs.map((d) => d.id), 14);
   const link = `${env.appBaseUrl.replace(/\/$/, '')}/api/share/${token}`;
-  const docName = doc.label || doc.originalName;
+  const label =
+    docs.length === 1 ? docs[0].label || docs[0].originalName : `${docs.length} מסמכים`;
 
   logActivity({
     type: 'document-sent',
-    clientId: doc.clientId,
-    caseId: doc.caseId,
-    summary: `נשלח מסמך "${docName}" ל${client.fullName} דרך ${REMINDER_LABEL[channel]}`,
+    clientId,
+    caseId: docs[0].caseId,
+    summary: `נשלח קישור ל${label} ל${client.fullName} דרך ${REMINDER_LABEL[channel]}`,
   });
 
   const result = await fireEvent('send-document', {
-    documentId,
+    documentIds: docs.map((d) => d.id),
+    documentCount: docs.length,
     channel,
     clientName: client.fullName,
     clientEmail: client.email || '',
     clientPhone: client.phone || '',
-    fileName: doc.originalName,
-    documentLabel: docName,
+    fileName: docs.length === 1 ? docs[0].originalName : `${docs.length} מסמכים`,
+    documentLabel: label,
     link,
     expiresInDays: 14,
     businessName: getConfig().businessName,
   });
   if (!result.ok) return { ok: false as const, error: 'שליחת ההודעה דרך n8n נכשלה' };
   return { ok: true as const, link };
+}
+
+/** Single-document convenience wrapper. */
+export async function sendDocumentLink(documentId: string, channel: SendChannel) {
+  return sendDocumentsLink([documentId], channel);
 }
 
 const REMINDER_LABEL: Record<SendChannel, string> = { email: 'אימייל', whatsapp: 'וואטסאפ', sms: 'SMS' };

@@ -18,15 +18,21 @@ function sign(encoded: string) {
   return crypto.createHmac('sha256', shareSecret()).update(encoded).digest('base64url');
 }
 
-/** Create a share token for a document, valid for `ttlDays` (default 14). */
-export function signDocumentShareToken(documentId: string, ttlDays = 14) {
-  const payload = { d: documentId, exp: Date.now() + ttlDays * 24 * 60 * 60 * 1000 };
+/** Create a share token for one or more documents, valid for `ttlDays` (default 14). */
+export function signShareToken(documentIds: string[], ttlDays = 14) {
+  const payload = { ids: documentIds, exp: Date.now() + ttlDays * 24 * 60 * 60 * 1000 };
   const encoded = base64url(JSON.stringify(payload));
   return `${encoded}.${sign(encoded)}`;
 }
 
-/** Verify a share token; returns the document id when valid and unexpired. */
-export function parseDocumentShareToken(token: string): { documentId: string } | null {
+/** Single-document convenience wrapper. */
+export function signDocumentShareToken(documentId: string, ttlDays = 14) {
+  return signShareToken([documentId], ttlDays);
+}
+
+/** Verify a share token; returns the authorized document ids when valid and unexpired.
+ *  Accepts both the new multi-doc payload ({ ids }) and the old single-doc one ({ d }). */
+export function parseShareToken(token: string): { documentIds: string[] } | null {
   const [encoded, signature] = (token || '').split('.');
   if (!encoded || !signature) return null;
 
@@ -36,9 +42,11 @@ export function parseDocumentShareToken(token: string): { documentId: string } |
   if (actual.length !== want.length || !crypto.timingSafeEqual(actual, want)) return null;
 
   try {
-    const payload = JSON.parse(decodeBase64url(encoded)) as { d?: string; exp?: number };
-    if (!payload.d || !payload.exp || Date.now() > payload.exp) return null;
-    return { documentId: payload.d };
+    const payload = JSON.parse(decodeBase64url(encoded)) as { d?: string; ids?: string[]; exp?: number };
+    if (!payload.exp || Date.now() > payload.exp) return null;
+    const ids = payload.ids ?? (payload.d ? [payload.d] : []);
+    if (!ids.length) return null;
+    return { documentIds: ids };
   } catch {
     return null;
   }
