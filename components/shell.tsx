@@ -84,8 +84,17 @@ function CheckSquareIcon() {
   );
 }
 
+function ChatIcon() {
+  return (
+    <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  );
+}
+
 const primaryNav = [
   { href: '/dashboard', label: 'לוח בקרה', Icon: HomeIcon, adminOnly: false },
+  { href: '/chat', label: 'צ׳אט צוות', Icon: ChatIcon, adminOnly: false },
   { href: '/tasks', label: 'משימות ותזכורות', Icon: CheckSquareIcon, adminOnly: false },
   { href: '/clients', label: 'לקוחות', Icon: UsersIcon, adminOnly: false },
   { href: '/cases', label: 'תיקים', Icon: FolderIcon, adminOnly: false },
@@ -103,7 +112,28 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [admin, setAdmin] = useState<AdminInfo | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
   const config = useConfig();
+
+  // Poll the chat badge (paused while the tab is hidden).
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const data = await fetch('/api/chat/unread').then((r) => r.json());
+        if (!cancelled && data.ok) setChatUnread(data.data.unread);
+      } catch {
+        /* retry on the next tick */
+      }
+    }
+    void load();
+    const interval = setInterval(load, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [pathname]);
 
   // Close the drawer whenever navigation happens.
   useEffect(() => {
@@ -151,6 +181,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
               <Link key={href} href={href as never} className={isActive(href) ? 'active' : undefined}>
                 <Icon />
                 <span>{label}</span>
+                {href === '/chat' && chatUnread > 0 && <span className="nav-badge">{chatUnread}</span>}
               </Link>
             ))}
           </nav>

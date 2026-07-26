@@ -40,11 +40,12 @@ import { signShareToken } from '@/lib/share';
 
 const appRoot = process.cwd();
 
-function dataRoot() {
+/** Storage primitives are exported so sibling modules (e.g. lib/chat.ts) reuse them. */
+export function dataRoot() {
   return path.isAbsolute(env.dataDir) ? env.dataDir : path.join(appRoot, env.dataDir);
 }
 
-function dbFile(name: string) {
+export function dbFile(name: string) {
   return path.join(dataRoot(), 'db', `${name}.json`);
 }
 
@@ -62,7 +63,7 @@ function logStore(level: 'info' | 'warn' | 'error', message: string, details?: R
   logger(`[CRM_YE Store] ${message}${payload}`);
 }
 
-function readJson<T>(filePath: string, fallback: T): T {
+export function readJson<T>(filePath: string, fallback: T): T {
   if (!fs.existsSync(filePath)) return fallback;
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
@@ -72,7 +73,7 @@ function readJson<T>(filePath: string, fallback: T): T {
   }
 }
 
-function writeJson(filePath: string, value: unknown) {
+export function writeJson(filePath: string, value: unknown) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const serialized = JSON.stringify(value, null, 2);
   const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
@@ -89,7 +90,7 @@ function writeJson(filePath: string, value: unknown) {
 
 type Counters = Record<string, number>;
 
-function nextId(prefix: string, counterKey: string, start = 1000) {
+export function nextId(prefix: string, counterKey: string, start = 1000) {
   const file = dbFile('counters');
   const counters = readJson<Counters>(file, {});
   const next = (counters[counterKey] ?? start) + 1;

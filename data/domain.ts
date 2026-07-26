@@ -330,6 +330,66 @@ export interface TaskRecord {
   completedAt?: string;
 }
 
+// ── Team chat ────────────────────────────────────────────────────────────────
+
+export type ChatChannelKind = 'public' | 'direct';
+
+export interface ChatChannel {
+  id: string;
+  kind: ChatChannelKind;
+  /** Display name (public channels); DMs are named after the other member. */
+  name: string;
+  /** Exactly two member ids for a DM; empty for public (everyone). */
+  memberIds: string[];
+  createdAt: string;
+  /** Bumped on every message so conversations sort by recency. */
+  updatedAt: string;
+}
+
+export type ChatAttachmentKind = 'file' | 'image' | 'voice';
+
+export interface ChatAttachment {
+  id: string;
+  /** Stored file name inside the channel folder. */
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  kind: ChatAttachmentKind;
+  /** Voice notes only. */
+  durationSec?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  channelId: string;
+  /** 'admin' (root), ADM-x or WRK-x. */
+  authorId: string;
+  authorName: string;
+  body?: string;
+  attachments: ChatAttachment[];
+  /** Set when the message carries a reminder (links to the task it created). */
+  reminderTaskId?: string;
+  reminderAt?: string;
+  reminderChannels?: ReminderChannel[];
+  /** Member ids that have read the message (the author counts as read). */
+  readBy: string[];
+  createdAt: string;
+  deletedAt?: string;
+}
+
+/** A person who can take part in the chat (admin or worker). */
+export interface ChatMember {
+  id: string;
+  name: string;
+  role: 'admin' | 'worker';
+  email?: string;
+  phone?: string;
+  active: boolean;
+}
+
+export const PUBLIC_CHANNEL_ID = 'public-general';
+
 export interface ActivityRecord {
   id: string;
   type: string;
