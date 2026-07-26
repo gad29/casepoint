@@ -360,6 +360,7 @@ export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, 
               )}
               <button type="button" className="doc-action-btn" onClick={() => setBundleOpen(false)}>ביטול</button>
               {sending && <span className="muted" style={{ fontSize: 12 }}>שולח…</span>}
+              {error && <p className="form-error" style={{ width: '100%', margin: '4px 0 0' }}>{error}</p>}
             </div>
           )}
           {documents.map((doc) => (
@@ -431,6 +432,7 @@ export function DocumentsPanel({ clientId, documents, caseId, checklistOptions, 
                   )}
                   <button type="button" className="doc-action-btn" onClick={() => setSendOpen(null)}>ביטול</button>
                   {sending && <span className="muted" style={{ fontSize: 12 }}>שולח…</span>}
+                  {error && <p className="form-error" style={{ width: '100%', margin: '4px 0 0' }}>{error}</p>}
                 </div>
               )}
             </div>

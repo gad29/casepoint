@@ -816,7 +816,15 @@ export async function sendDocumentsLink(documentIds: string[], channel: SendChan
     expiresInDays: 14,
     businessName: getConfig().businessName,
   });
-  if (!result.ok) return { ok: false as const, error: 'שליחת ההודעה דרך n8n נכשלה' };
+  if (!result.ok) {
+    // Surface why n8n refused — usually the workflow is inactive (404) or the
+    // base URL points at /webhook-test with no listener armed.
+    const detail = 'error' in result && result.error ? ` (${result.error})` : '';
+    const hint = /404/.test(detail)
+      ? ' — ודא שהוורקפלואו "שליחת מסמך ללקוח" פעיל ב-n8n ושהנתיב הוא crmye/send-document'
+      : '';
+    return { ok: false as const, error: `שליחת ההודעה דרך n8n נכשלה${detail}${hint}` };
+  }
   return { ok: true as const, link };
 }
 
